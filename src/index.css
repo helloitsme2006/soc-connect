@@ -1,0 +1,651 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Audiowide&family=Montserrat:wght@400;700&family=Nunito:wght@400;700&family=Alfa+Slab+One&display=swap');
+@import "./styles/ios-close.css";
+
+:root {
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  /* Midnight Indigo Design Tokens */
+  --bg-base: #0b1020;
+  --bg-section: #121a2f;
+  --bg-card: #1a2340;
+  --bg-card-high: #263055;
+  --text-primary: #eef2ff;
+  --text-muted: #b3bfdc;
+  --text-subtle: #90a0c7;
+  --accent-indigo: #6366f1;
+  --outline: rgba(255, 255, 255, 0.08);
+
+  background: var(--bg-base);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  scroll-behavior: smooth;
+}
+
+html,
+body,
+#root {
+  background-color: var(--bg-base);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+@keyframes shine {
+  0% {
+    transform: translateX(-100%) rotate(25deg);
+  }
+
+  100% {
+    transform: translateX(200%) rotate(25deg);
+  }
+}
+
+#about_us_para {
+  position: relative;
+  overflow: hidden;
+  will-change: transform, text-shadow;
+  display: inline-block;
+}
+
+/* this is for grid images ko yha vha fainkne ke liye */
+.my-grid-item {
+  grid-row: var(--r);
+  grid-column: var(--c);
+  min-height: 120px;
+  min-width: 120px;
+  aspect-ratio: 1;
+  overflow: hidden;
+}
+
+.my-grid-item img {
+  opacity: 0.7;
+  transition: opacity 0.3s ease;
+}
+
+.my-grid-item:hover img {
+  opacity: 0.8;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .my-grid-item {
+    min-height: 160px;
+    min-width: 160px;
+  }
+
+  .mobile-grid {
+    gap: 1rem !important;
+    row-gap: 2rem !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .my-grid-item {
+    min-height: 140px;
+    min-width: 140px;
+  }
+
+  .mobile-grid {
+    gap: 1.5rem !important;
+    row-gap: 2.5rem !important;
+  }
+}
+
+.darkthemebg {
+  background:
+    radial-gradient(1100px 600px at -10% -10%, rgba(148, 163, 184, 0.08), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(167, 139, 250, 0.08), transparent 58%),
+    linear-gradient(135deg, #11131d 0%, #171b28 45%, #1c2231 100%);
+}
+
+.darkthemebg2 {
+  background: linear-gradient(145deg, #1b2130, #242c3d);
+}
+
+
+
+/* Bottom underline on hover */
+#about_us_para::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, #4aff92, #1e9c46);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#about_us_para:hover::after {
+  transform: scaleX(1);
+  transform-origin: left;
+}
+
+/* Animations */
+
+
+@keyframes float {
+
+  0% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+
+  100% {
+    transform: translateY(0);
+  }
+}
+
+
+
+#about_us_para {
+  animation: float 2.5s ease-in-out infinite, glow 2.5s ease-in-out infinite;
+}
+
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.active {
+  color: #10b981;
+}
+
+.navbar_shadow {
+  box-shadow: rgba(34, 197, 94, 0.1) 0px 10px 10px -10px;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3a3939;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4949;
+}
+
+/* Selection color */
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: white;
+}
+
+::-moz-selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: white;
+}
+
+/* Optimized Bento Grid Custom Styles */
+.card {
+  position: relative;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  /* Force hardware acceleration */
+  /* Performance optimizations */
+  contain: layout style paint;
+  backface-visibility: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg,
+      rgba(34, 197, 94, 0.1) 0%,
+      rgba(16, 185, 129, 0.05) 100%);
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.card:hover::before {
+  opacity: 1;
+}
+
+.glass-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  transform: translateY(100%);
+  transition: transform 0.3s ease-out;
+  color: white;
+  z-index: 2;
+}
+
+.card:hover .glass-overlay {
+  transform: translateY(0);
+}
+
+/* Performance optimizations for glass overlay */
+.glass-overlay {
+  /* Optimize backdrop filter performance */
+  will-change: transform;
+  contain: layout style paint;
+}
+
+@property --angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes rotate-glow {
+  to {
+    --angle: 360deg;
+  }
+}
+
+
+
+.glowing-container {
+  --angle: 0deg;
+  position: relative;
+  border-radius: 1.5rem;
+  isolation: isolate;
+}
+
+/* The animated border */
+.glowing-container::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  z-index: -1;
+
+  background: conic-gradient(from var(--angle),
+      #1e1e2f 0deg,
+      #0ea5e9 90deg,
+      #ec4899 180deg,
+      #0ea5e9 270deg,
+      #1e1e2f 360deg);
+
+  animation: rotate-glow 6s linear infinite;
+  filter: blur(8px);
+
+  /* start hidden */
+  /* opacity: 0; */
+  /* transition: opacity 0.6s ease; */
+}
+
+/* Once React adds .loaded, fade in */
+.glowing-container.loaded::before {
+  opacity: 1;
+}
+
+@keyframes rotate-glow {
+  to {
+    --angle: 360deg;
+  }
+}
+
+
+
+
+.glowing-btn-wrapper {
+  --angle: 0deg;
+  position: relative;
+  display: inline-block;
+  padding: 2px;
+  overflow: hidden;
+  width: fit-content;
+  transition: transform 0.3s ease;
+}
+
+.glowing-btn-wrapper:hover {
+  transform: scale(1.05);
+}
+
+.glowing-btn-wrapper.rounded-full {
+  border-radius: 9999px;
+}
+
+.glowing-btn-wrapper.rounded-lg {
+  border-radius: 0.5rem;
+}
+
+.glowing-btn-wrapper.rounded-2xl {
+  border-radius: 1rem;
+}
+
+.glowing-btn-wrapper.green::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: conic-gradient(from var(--angle),
+      transparent 40%,
+      #4ade80,
+      #22c55e,
+      transparent 60%);
+  animation: rotate-glow 4s linear infinite;
+  filter: blur(2px);
+}
+
+.glowing-btn-wrapper.blue::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: conic-gradient(from var(--angle),
+      transparent 40%,
+      #4a51de,
+      #af22c5,
+      transparent 60%);
+  animation: rotate-glow 4s linear infinite;
+  filter: blur(2px);
+}
+
+.glowing-btn-wrapper>* {
+  position: relative;
+  z-index: 2;
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  border: none !important;
+}
+
+/* Responsive adjustments for bento grid */
+@media (max-width: 1024px) {
+  .bento-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .bento-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-card,
+  .wide-card {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 480px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-card,
+  .wide-card {
+    grid-column: span 1;
+  }
+}
+
+/* for page -> ResultPage for loader animation */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes spin-reverse {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(-360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+.reverse {
+  animation: spin-reverse 0.8s linear infinite;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Events page: grid fly-in + staggered card reveal */
+.events-grid {
+  opacity: 0;
+  transform: translateY(60px) scale(0.9);
+  will-change: transform, opacity;
+  animation: events-grid-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes events-grid-in {
+  from {
+    opacity: 0;
+    transform: translateY(80px) scale(0.88);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.event-card {
+  opacity: 0;
+  transform: translateY(40px) scale(0.95);
+  will-change: transform, opacity;
+  animation-name: event-card-in;
+  animation-duration: 0.55s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: forwards;
+  animation-delay: calc(0.25s + (var(--stagger-index, 0) * 0.08s));
+}
+
+@keyframes event-card-in {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.9);
+  }
+
+  60% {
+    opacity: 1;
+    transform: translateY(0) scale(1.03);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Gallery page: zoom-out reveal for all pics */
+.gallery-image-card {
+  opacity: 0;
+  transform: scale(1.08);
+  will-change: transform, opacity;
+  animation-name: gallery-zoom-out;
+  animation-duration: 0.85s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: forwards;
+  animation-delay: calc(0.15s + (var(--gallery-index, 0) * 0.035s));
+}
+
+@keyframes gallery-zoom-out {
+  0% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+
+  70% {
+    opacity: 1;
+    transform: scale(1.01);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1.0);
+  }
+}
+
+/* Gallery page background effects */
+.gallery-bg-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.gallery-bg-orbits {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(34, 197, 94, 0.15), transparent 55%),
+    radial-gradient(circle at 90% 20%, rgba(56, 189, 248, 0.16), transparent 55%),
+    radial-gradient(circle at 15% 90%, rgba(168, 85, 247, 0.18), transparent 55%);
+  mix-blend-mode: screen;
+  filter: blur(18px);
+  opacity: 0.8;
+  animation: gallery-orbits 26s ease-in-out infinite alternate;
+}
+
+.gallery-bg-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.45;
+  mix-blend-mode: soft-light;
+}
+
+@keyframes gallery-orbits {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate3d(10px, -10px, 0) scale(1.04);
+  }
+
+  100% {
+    transform: translate3d(-8px, 12px, 0) scale(1.02);
+  }
+}
+
+
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 240 5.9% 10%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 240 10% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 5.9% 10%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 240 4.9% 83.9%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
