@@ -4,7 +4,6 @@ const College = require("../models/College");
 const Society = require("../models/Society");
 const SocietyRegistration = require("../models/SocietyRegistration");
 const SocietySignupConfig = require("../models/SocietySignupConfig");
-const SignupConfig = require("../models/SignupConfig");
 const mailSender = require("../utils/mailSender");
 const { registrationOtpTemplate } = require("../mail/templates");
 const { imageUpload } = require("../config/cloudinary");
@@ -313,14 +312,8 @@ exports.registerSociety = async (req, res) => {
           await cfg.save();
         }
 
-        // Also keep global SignupConfig in sync (so existing tooling still works).
-        await SignupConfig.findOneAndUpdate(
-          { department: ADMIN_DEPARTMENT },
-          { $addToSet: { allowedEmails: emailNorm } },
-          { upsert: true }
-        );
       } catch (e) {
-        console.error("registerSociety: failed to sync SocietySignupConfig/SignupConfig:", e);
+        console.error("registerSociety: failed to sync SocietySignupConfig:", e);
       }
 
       return res.status(201).json({

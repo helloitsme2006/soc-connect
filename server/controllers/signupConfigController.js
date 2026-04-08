@@ -1,25 +1,33 @@
 const SignupConfig = require("../models/SignupConfig");
+const Society = require("../models/Society");
+const SocietyFaculty = require("../models/SocietyFaculty");
 const { logActivity } = require("../utils/activityLog");
 
-const ALL_DEPARTMENTS = [
-  "ADMIN",
-  "Chairperson",
-  "Vice-Chairperson",
-  "Social Media and Promotion",
-  "Technical",
-  "Event Management",
-  "Public Relation and Outreach",
-  "Design",
-  "Content and Documentation",
-  "Photography and Videography",
-  "Sponsorship and Marketing",
-];
+async function getRequesterSociety(req) {
+  const emailNorm = (req.user?.email || "").trim().toLowerCase();
+  if (!emailNorm) return null;
+
+  const mapped = await SocietyFaculty.findOne({ email: emailNorm }).lean().catch(() => null);
+  if (mapped) {
+    const society = await Society.findOne({
+      name: (mapped.societyName || "").trim(),
+    }).catch(() => null);
+    if (society) return society;
+  }
+  return Society.findOne({ email: emailNorm }).catch(() => null);
+}
 
 exports.getAllSignupConfigs = async (req, res) => {
   try {
-    const configsFromDb = await SignupConfig.find({}).sort({ department: 1 });
-    const byDept = new Map(configsFromDb.map((c) => [c.department, c.allowedEmails || []]));
-    const data = ALL_DEPARTMENTS.map((department) => ({
+    const society = await getRequesterSociety(req);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+    const configDoc = await SignupConfig.findOne({ society: society._id }).lean();
+    const dynamicDepartments = Array.isArray(society.positions)
+      ? society.positions.map((p) => String(p || "").trim()).filter(Boolean)
+      : [];
+    const ordered = Array.from(new Set(dynamicDepartments));
+    const byDept = new Map((configDoc?.departments || []).map((d) => [(d.department || "").trim(), d.allowedEmails || []]));
+    const data = ordered.map((department) => ({
       department,
       allowedEmails: byDept.get(department) || [],
     }));
@@ -47,24 +55,38 @@ exports.addEmail = async (req, res) => {
         message: "Department and email are required.",
       });
     }
-    if (!ALL_DEPARTMENTS.includes(deptTrim)) {
+    const society = await getRequesterSociety(req);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+    const positionExists = (society.positions || []).some(
+      (p) => String(p || "").trim().toLowerCase() === deptTrim.toLowerCase()
+    );
+    if (!positionExists) {
       return res.status(400).json({
         success: false,
-        message: "Invalid department.",
+        message: "Position not found in society core members.",
       });
     }
     const emailNorm = email.trim().toLowerCase();
-    let config = await SignupConfig.findOne({ department: deptTrim });
+
+    let config = await SignupConfig.findOne({ society: society._id });
     if (!config) {
-      config = await SignupConfig.create({ department: deptTrim, allowedEmails: [] });
+      config = await SignupConfig.create({ society: society._id, departments: [] });
+      society.signupconfigs = config._id;
+      await society.save();
     }
-    if (config.allowedEmails.includes(emailNorm)) {
+    let deptEntry = config.departments.find((d) => (d.department || "").trim() === deptTrim);
+    if (!deptEntry) {
+      config.departments.push({ department: deptTrim, allowedEmails: [] });
+      deptEntry = config.departments[config.departments.length - 1];
+    }
+    if ((deptEntry.allowedEmails || []).includes(emailNorm)) {
       return res.status(400).json({
         success: false,
         message: "Email already in list.",
       });
     }
-    config.allowedEmails.push(emailNorm);
+    deptEntry.allowedEmails = deptEntry.allowedEmails || [];
+    deptEntry.allowedEmails.push(emailNorm);
     await config.save();
     if (req.user?.id) {
       await logActivity(req.user.id, "signup_config_add", "signup_config", { department: deptTrim, email: emailNorm }, "", "SignupConfig");
@@ -94,15 +116,20 @@ exports.removeEmail = async (req, res) => {
       });
     }
     const emailNorm = email.trim().toLowerCase();
-    const config = await SignupConfig.findOne({ department: deptTrim });
+    const society = await getRequesterSociety(req);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+    const config = await SignupConfig.findOne({ society: society._id });
     if (!config) {
       return res.status(200).json({
         success: true,
         message: "Email removed.",
-        data: { department: deptTrim, allowedEmails: [] },
+        data: [],
       });
     }
-    config.allowedEmails = config.allowedEmails.filter((e) => e !== emailNorm);
+    const deptEntry = config.departments.find((d) => (d.department || "").trim() === deptTrim);
+    if (deptEntry) {
+      deptEntry.allowedEmails = (deptEntry.allowedEmails || []).filter((e) => e !== emailNorm);
+    }
     await config.save();
     if (req.user?.id) {
       await logActivity(req.user.id, "signup_config_remove", "signup_config", { department: deptTrim, email: emailNorm }, "", "SignupConfig");

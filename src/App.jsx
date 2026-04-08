@@ -30,7 +30,6 @@ import ResultPage from "./pages/ResultPage"
 import Quiz from "./pages/Quiz"
 import Leaderboard from "./pages/Leaderboard"
 import QuizResult from "./pages/QuizResult"
-import JamTheWeb from "./pages/JamTheWeb"
 import ManageTeam from "./pages/ManageTeam"
 import ManageSociety from "./pages/ManageSociety"
 import UniversityAdminDashboard from "./pages/UniversityAdminDashboard"
@@ -51,7 +50,6 @@ function App() {
     "/profile",
     "/manage-team",
     "/manage-society",
-    "/jam-the-web",
   ]
 
   const shouldAnimatePage = dropdownBasePaths.some((base) =>
@@ -121,7 +119,6 @@ function App() {
                 <Route path="/quiz" element={<Quiz />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
                 <Route path="/quiz/result" element={<QuizResult />} />
-                <Route path="/jam-the-web" element={<JamTheWeb />} />
                 <Route path="/interview-setup" element={<InterviewSetup />} />
                 <Route path="/interview-dashboard" element={<InterviewDashboard />} />
                 <Route path="/my-interview" element={<MyInterview />} />

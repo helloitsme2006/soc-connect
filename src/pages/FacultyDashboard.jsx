@@ -2,7 +2,14 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
-import { getFacultyContext, updateFacultySocietyDetails } from "../services/api";
+import {
+  getFacultyContext,
+  updateFacultySocietyDetails,
+  getFacultyCoreMembers,
+  addFacultyCoreMember,
+  updateFacultyCoreMember,
+  deleteFacultyCoreMember,
+} from "../services/api";
 import {
   Building2,
   User,
@@ -26,7 +33,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 
-const CORE_POSITION_OPTIONS = [
+const DEFAULT_CORE_POSITION_OPTIONS = [
   "President",
   "Vice President",
   "General Secretary",
@@ -252,6 +259,7 @@ export default function FacultyDashboard() {
 
   // Core Members State
   const [coreMembers, setCoreMembers] = useState([]);
+  const [coreLoading, setCoreLoading] = useState(false);
   const [memberPosition, setMemberPosition] = useState("");
   const [positionQuery, setPositionQuery] = useState("");
   const [showPositionDropdown, setShowPositionDropdown] = useState(false);
@@ -297,6 +305,34 @@ export default function FacultyDashboard() {
       }
     };
     load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCore = async () => {
+      try {
+        setCoreLoading(true);
+        const res = await getFacultyCoreMembers();
+        if (!cancelled) {
+          const rows = Array.isArray(res?.data) ? res.data : [];
+          setCoreMembers(
+            rows.map((m, idx) => ({
+              id: String(m?.id || m?.position || idx),
+              position: m?.position || "",
+              email: m?.email || "",
+            }))
+          );
+        }
+      } catch {
+        if (!cancelled) setCoreMembers([]);
+      } finally {
+        if (!cancelled) setCoreLoading(false);
+      }
+    };
+    loadCore();
     return () => {
       cancelled = true;
     };
@@ -385,31 +421,47 @@ export default function FacultyDashboard() {
     }
   };
 
-  const handleAddMember = (e) => {
+  const handleAddMember = async (e) => {
     e.preventDefault();
     if (!memberPosition.trim() || !memberEmail.trim()) {
       toast.error("Please provide both position and email to add a member.");
       return;
     }
 
-    if (editingMemberId) {
-      setCoreMembers((prev) =>
-        prev.map((m) =>
-          m.id === editingMemberId
-            ? { ...m, position: memberPosition.trim(), email: memberEmail.trim() }
-            : m
-        )
-      );
-      toast.success("Member updated successfully!");
-      setEditingMemberId(null);
-    } else {
-      const newMember = {
-        id: Date.now().toString(),
-        position: memberPosition.trim(),
-        email: memberEmail.trim(),
-      };
-      setCoreMembers((prev) => [...prev, newMember]);
-      toast.success(`Added ${newMember.position} successfully!`);
+    try {
+      if (editingMemberId) {
+        const res = await updateFacultyCoreMember(editingMemberId, {
+          position: memberPosition.trim(),
+          email: memberEmail.trim(),
+        });
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setCoreMembers(
+          rows.map((m, idx) => ({
+            id: String(m?.id || m?.position || idx),
+            position: m?.position || "",
+            email: m?.email || "",
+          }))
+        );
+        toast.success("Member updated successfully!");
+        setEditingMemberId(null);
+      } else {
+        const res = await addFacultyCoreMember({
+          position: memberPosition.trim(),
+          email: memberEmail.trim(),
+        });
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setCoreMembers(
+          rows.map((m, idx) => ({
+            id: String(m?.id || m?.position || idx),
+            position: m?.position || "",
+            email: m?.email || "",
+          }))
+        );
+        toast.success(`Added ${memberPosition.trim()} successfully!`);
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to save core member.");
+      return;
     }
 
     setMemberPosition("");
@@ -424,18 +476,34 @@ export default function FacultyDashboard() {
     setEditingMemberId(member.id);
   };
 
-  const handleRemoveMember = (id) => {
-    setCoreMembers((prev) => prev.filter((m) => m.id !== id));
-    toast.success("Member removed.");
-    if (editingMemberId === id) {
-      setEditingMemberId(null);
-      setMemberPosition("");
-      setPositionQuery("");
-      setMemberEmail("");
+  const handleRemoveMember = async (id) => {
+    try {
+      const res = await deleteFacultyCoreMember(id);
+      const rows = Array.isArray(res?.data) ? res.data : [];
+      setCoreMembers(
+        rows.map((m, idx) => ({
+          id: String(m?.id || m?.position || idx),
+          position: m?.position || "",
+          email: m?.email || "",
+        }))
+      );
+      toast.success("Member removed.");
+      if (editingMemberId === id) {
+        setEditingMemberId(null);
+        setMemberPosition("");
+        setPositionQuery("");
+        setMemberEmail("");
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to remove member.");
     }
   };
 
-  const filteredPositions = CORE_POSITION_OPTIONS.filter((position) =>
+  const availablePositionOptions = Array.from(
+    new Set([...DEFAULT_CORE_POSITION_OPTIONS, ...coreMembers.map((m) => m.position).filter(Boolean)])
+  );
+
+  const filteredPositions = availablePositionOptions.filter((position) =>
     position.toLowerCase().includes(positionQuery.trim().toLowerCase())
   );
 
@@ -688,7 +756,7 @@ export default function FacultyDashboard() {
                               {position}
                             </button>
                           ))}
-                          {positionQuery.trim() && !CORE_POSITION_OPTIONS.some((p) => p.toLowerCase() === positionQuery.trim().toLowerCase()) && (
+                          {positionQuery.trim() && !availablePositionOptions.some((p) => p.toLowerCase() === positionQuery.trim().toLowerCase()) && (
                             <button
                               type="button"
                               onClick={() => {
@@ -749,7 +817,7 @@ export default function FacultyDashboard() {
                 {coreMembers.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
                     <UsersIcon className="h-10 w-10 text-gray-600 mb-3" />
-                    <p className="text-gray-400 font-medium text-sm">No members added yet</p>
+                    <p className="text-gray-400 font-medium text-sm">{coreLoading ? "Loading members..." : "No members added yet"}</p>
                     <p className="text-gray-500 text-xs mt-1 max-w-[200px]">Use the form above to add core executives.</p>
                   </div>
                 ) : (

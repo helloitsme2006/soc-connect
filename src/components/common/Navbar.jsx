@@ -37,6 +37,7 @@ function Navbar() {
 
   if (path.startsWith("/faculty-dashboard")) {
     navLinks = [
+      { to: "/", label: "Home", icon: <SaxHome2Linear className="w-4 h-4" /> },
       { to: "/faculty-dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" />, exact: true },
       { to: "/faculty-dashboard/society", label: "Society Details", icon: <FileText className="w-4 h-4" /> },
       { to: "/faculty-dashboard/members", label: "Members", icon: <Users className="w-4 h-4" /> },
@@ -61,7 +62,9 @@ function Navbar() {
       { to: "/", label: "Home", icon: <SaxHome2Linear className="w-4 h-4" />, exact: true },
       { to: "/about", label: "About", icon: <SaxInfoCircleLinear className="w-4 h-4" /> },
       ...(user ? [
-        { to: "/team", label: "Team", icon: <SaxProfile2UserLinear className="w-4 h-4" /> },
+        ...(isSocietyRole(user.accountType)
+          ? [{ to: "/faculty-dashboard", label: "Dashboard", icon: <SaxProfile2UserLinear className="w-4 h-4" /> }]
+          : [{ to: "/team", label: "Team", icon: <SaxProfile2UserLinear className="w-4 h-4" /> }]),
         { to: "/events", label: "Events", icon: <SaxCalendarTickTwotone className="w-4 h-4" /> },
         { to: "/gallery", label: "Gallery", icon: <SaxGalleryLinear className="w-4 h-4" /> },
       ] : []),

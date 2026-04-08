@@ -13,6 +13,8 @@ const societySchema = new mongoose.Schema(
     logoUrl: { type: String, default: "" },
     category: { type: String, enum: ["tech", "non-tech", ""], default: "" },
     description: { type: String, default: "" },
+    signupconfigs: { type: mongoose.Schema.Types.ObjectId, ref: "SignupConfig", default: null },
+    positions: [{ type: String, trim: true }],
     password: { type: String, required: true },
     verified: { type: Boolean, default: false },
     status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },

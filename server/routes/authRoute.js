@@ -23,6 +23,10 @@ const {
   getFacultyContext,
   createCollegeSociety,
   updateFacultySocietyDetails,
+  getFacultyCoreMembers,
+  addFacultyCoreMember,
+  updateFacultyCoreMember,
+  deleteFacultyCoreMember,
 } = require("../controllers/authController");
 const {
   getAllSignupConfigs,
@@ -58,6 +62,10 @@ router.post("/verify-otp", verifySignupOTP);
 router.get("/faculty/context", auth, getFacultyContext);
 router.post("/college/societies", auth, isCollegeAdmin, createCollegeSociety);
 router.put("/faculty/society-details", auth, canAccessDashboard, updateFacultySocietyDetails);
+router.get("/faculty/core-members", auth, canAccessDashboard, getFacultyCoreMembers);
+router.post("/faculty/core-members", auth, canAccessDashboard, addFacultyCoreMember);
+router.put("/faculty/core-members/:id", auth, canAccessDashboard, updateFacultyCoreMember);
+router.delete("/faculty/core-members/:id", auth, canAccessDashboard, deleteFacultyCoreMember);
 
 router.get("/signup-config", auth, canAccessDashboard, getAllSignupConfigs);
 router.post("/signup-config/add", auth, canAccessDashboard, addEmail);

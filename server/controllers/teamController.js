@@ -3,6 +3,8 @@ const path = require("path");
 const { getTeamMemberModel } = require("../models/TeamMember");
 const TeamInviteLink = require("../models/TeamInviteLink");
 const SignupConfig = require("../models/SignupConfig");
+const Society = require("../models/Society");
+const SocietyFaculty = require("../models/SocietyFaculty");
 const User = require("../models/User");
 const PredefinedProfile = require("../models/PredefinedProfile");
 const { imageUpload, deleteImageByUrl } = require("../config/cloudinary");
@@ -41,6 +43,17 @@ function resolveDepartment(req) {
   if (isSociety && !TEAM_DEPARTMENTS.includes(dept)) return null;
   if (!isSociety && dept !== accountType) return null;
   return dept;
+}
+
+async function resolveRequesterSociety(req) {
+  const emailNorm = (req.user?.email || "").trim().toLowerCase();
+  if (!emailNorm) return null;
+  const mapped = await SocietyFaculty.findOne({ email: emailNorm }).lean().catch(() => null);
+  if (mapped) {
+    const society = await Society.findOne({ name: (mapped.societyName || "").trim() }).lean().catch(() => null);
+    if (society) return society;
+  }
+  return Society.findOne({ email: emailNorm }).lean().catch(() => null);
 }
 
 exports.getDepartments = async (req, res) => {
@@ -91,8 +104,13 @@ exports.getDepartmentRoster = async (req, res) => {
           : "Department not found.",
       });
     }
-    const config = await SignupConfig.findOne({ department }).lean();
-    const allowedEmails = (config && config.allowedEmails) ? [...config.allowedEmails] : [];
+    const society = await resolveRequesterSociety(req);
+    if (!society) {
+      return res.status(404).json({ success: false, message: "Society not found." });
+    }
+    const config = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs).lean() : null;
+    const deptCfg = (config?.departments || []).find((d) => (d.department || "").trim() === department);
+    const allowedEmails = deptCfg?.allowedEmails ? [...deptCfg.allowedEmails] : [];
     const roster = [];
     for (const email of allowedEmails) {
       const emailNorm = (email || "").trim().toLowerCase();
