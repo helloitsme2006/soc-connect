@@ -21,6 +21,12 @@ const collegeSchema = new mongoose.Schema(
         societyName: { type: String },
       },
     ],
+    societies_signup: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "SocietySignupConfig",
+      },
+    ],
   },
   { timestamps: true }
 );

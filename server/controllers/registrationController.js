@@ -225,6 +225,7 @@ exports.registerCollege = async (req, res) => {
       password: hashedPassword,
       verified: true,
       societies: [],
+      societies_signup: [],
     });
 
     parentUniv.colleges.push({ collegeId: doc._id, collegeName: doc.name });

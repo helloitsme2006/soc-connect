@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
-import { getFacultyContext } from "../services/api";
+import { getFacultyContext, updateFacultySocietyDetails } from "../services/api";
 import {
   Building2,
   User,
@@ -25,6 +25,22 @@ import {
   Users as UsersIcon,
   CheckCircle2
 } from "lucide-react";
+
+const CORE_POSITION_OPTIONS = [
+  "President",
+  "Vice President",
+  "General Secretary",
+  "Joint Secretary",
+  "Treasurer",
+  "Technical Lead",
+  "Event Lead",
+  "Design Lead",
+  "Content Lead",
+  "PR Lead",
+  "Marketing Lead",
+  "Outreach Lead",
+  "Operations Lead",
+];
 
 /* ─── Animation Variants ──────────────────────────────────────────────── */
 const staggerContainer = {
@@ -210,11 +226,13 @@ function DashboardNav({ facultyName, societyName }) {
    MAIN PAGE
    ═════════════════════════════════════════════════════════════════════ */
 export default function FacultyDashboard() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const [facultyContext, setFacultyContext] = useState({
     societyName: user?.facultyContext?.societyName || "",
     collegeName: user?.facultyContext?.collegeName || "",
     logoUrl: user?.facultyContext?.logoUrl || "",
+    category: user?.facultyContext?.category || "",
+    description: user?.facultyContext?.description || "",
   });
   const [contextLoading, setContextLoading] = useState(false);
 
@@ -224,12 +242,19 @@ export default function FacultyDashboard() {
   );
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [societyNameInput, setSocietyNameInput] = useState("");
   const [logoPreview, setLogoPreview] = useState(null);
+  const [logoFile, setLogoFile] = useState(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
   const fileInputRef = useRef(null);
 
   // Core Members State
   const [coreMembers, setCoreMembers] = useState([]);
   const [memberPosition, setMemberPosition] = useState("");
+  const [positionQuery, setPositionQuery] = useState("");
+  const [showPositionDropdown, setShowPositionDropdown] = useState(false);
   const [memberEmail, setMemberEmail] = useState("");
   const [editingMemberId, setEditingMemberId] = useState(null);
 
@@ -245,6 +270,12 @@ export default function FacultyDashboard() {
   }, [facultyContext.logoUrl, logoPreview]);
 
   useEffect(() => {
+    if (!description) setDescription(facultyContext.description || "");
+    if (!category) setCategory(facultyContext.category || "");
+    if (!societyNameInput) setSocietyNameInput(facultyContext.societyName || "");
+  }, [facultyContext.description, facultyContext.category, facultyContext.societyName, description, category, societyNameInput]);
+
+  useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
@@ -255,6 +286,8 @@ export default function FacultyDashboard() {
             societyName: data?.societyName || "",
             collegeName: data?.collegeName || "",
             logoUrl: data?.logoUrl || "",
+            category: data?.category || "",
+            description: data?.description || "",
           });
         }
       } catch {
@@ -270,13 +303,13 @@ export default function FacultyDashboard() {
   }, []);
 
   /* ─── Handlers ──────────────────────────────────────────────────────── */
-  const handleLogoUpload = (e) => {
-    const file = e.target.files[0];
+  const handleLogoUpload = (file) => {
     if (file) {
       if (!file.type.startsWith("image/")) {
         toast.error("Please upload a valid image file.");
         return;
       }
+      setLogoFile(file);
       const reader = new FileReader();
       reader.onloadend = () => setLogoPreview(reader.result);
       reader.readAsDataURL(file);
@@ -285,11 +318,13 @@ export default function FacultyDashboard() {
 
   const clearLogo = () => {
     setLogoPreview(null);
+    setLogoFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleSaveSocietyDetails = (e) => {
+  const handleSaveSocietyDetails = async (e) => {
     e.preventDefault();
+    if (!isEditingDetails) return;
     if (!category) {
       toast.error("Please select a Society Category.");
       return;
@@ -298,8 +333,56 @@ export default function FacultyDashboard() {
       toast.error("Please upload a Society Logo.");
       return;
     }
-    // Perform save logic here
-    toast.success("Society details saved successfully!");
+    if (!facultyName.trim()) {
+      toast.error("Faculty name is required.");
+      return;
+    }
+    if (!societyNameInput.trim()) {
+      toast.error("Society name is missing.");
+      return;
+    }
+    try {
+      setIsSavingDetails(true);
+      const res = await updateFacultySocietyDetails({
+        societyName: societyNameInput.trim(),
+        category,
+        description: description.trim(),
+        facultyName: facultyName.trim(),
+        logoFile,
+      });
+      const ctx = res?.data?.context || {};
+      setFacultyContext((prev) => ({
+        ...prev,
+        societyName: ctx.societyName || prev.societyName,
+        collegeName: ctx.collegeName || prev.collegeName,
+        logoUrl: ctx.logoUrl || prev.logoUrl,
+        category: ctx.category || category,
+        description: ctx.description || description,
+      }));
+      setLogoPreview(ctx.logoUrl || logoPreview);
+      setSocietyNameInput(ctx.societyName || societyNameInput);
+      setLogoFile(null);
+      setUser((prev) => {
+        if (!prev) return prev;
+        const fullName = (res?.data?.facultyName || facultyName).trim();
+        const [firstName, ...rest] = fullName.split(/\s+/).filter(Boolean);
+        return {
+          ...prev,
+          firstName: firstName || prev.firstName,
+          lastName: rest.join(" ") || prev.lastName,
+          facultyContext: {
+            ...(prev.facultyContext || {}),
+            ...ctx,
+          },
+        };
+      });
+      setIsEditingDetails(false);
+      toast.success("Society details saved successfully.");
+    } catch (err) {
+      toast.error(err.message || "Failed to save details.");
+    } finally {
+      setIsSavingDetails(false);
+    }
   };
 
   const handleAddMember = (e) => {
@@ -330,11 +413,13 @@ export default function FacultyDashboard() {
     }
 
     setMemberPosition("");
+    setPositionQuery("");
     setMemberEmail("");
   };
 
   const handleEditMember = (member) => {
     setMemberPosition(member.position);
+    setPositionQuery(member.position);
     setMemberEmail(member.email);
     setEditingMemberId(member.id);
   };
@@ -345,9 +430,14 @@ export default function FacultyDashboard() {
     if (editingMemberId === id) {
       setEditingMemberId(null);
       setMemberPosition("");
+      setPositionQuery("");
       setMemberEmail("");
     }
   };
+
+  const filteredPositions = CORE_POSITION_OPTIONS.filter((position) =>
+    position.toLowerCase().includes(positionQuery.trim().toLowerCase())
+  );
 
   /* ─── Render ────────────────────────────────────────────────────────── */
   return (
@@ -396,13 +486,31 @@ export default function FacultyDashboard() {
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-8">
             {/* ───────────── SOCIETY DETAILS FORM ───────────── */}
             <GlassCard className="xl:col-span-3 p-6 sm:p-8 flex flex-col">
-              <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
-                <FileText className="h-5 w-5 text-indigo-400" />
-                Complete Society Details
-              </h2>
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-indigo-400" />
+                  Complete Society Details
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingDetails((v) => !v)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.12] text-gray-300 hover:text-white hover:bg-white/[0.06] transition-colors flex items-center gap-1.5"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {isEditingDetails ? "Cancel" : "Edit"}
+                </button>
+              </div>
               <p className="text-sm text-gray-400 mb-6 font-medium">Please provide the missing details to finalize the society profile.</p>
               
               <form onSubmit={handleSaveSocietyDetails} className="space-y-5 flex-1">
+                <InputField
+                  label="Society Name"
+                  icon={School}
+                  value={societyNameInput}
+                  onChange={(e) => setSocietyNameInput(e.target.value)}
+                  disabled={!isEditingDetails}
+                  required
+                />
                 
                 {/* File Upload / Category row */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -410,7 +518,27 @@ export default function FacultyDashboard() {
                     <label className="text-xs font-medium text-gray-400 tracking-wide pl-0.5">
                       Society Logo <span className="text-red-400">*</span>
                     </label>
-                    <div className="flex items-center gap-3">
+                    <div
+                      className={`flex items-center gap-3 rounded-xl p-2 border transition-colors ${
+                        isEditingDetails
+                          ? isDragOver
+                            ? "border-cyan-500/60 bg-cyan-500/10"
+                            : "border-white/[0.08] bg-[#252536]/40"
+                          : "border-white/[0.05] bg-[#252536]/20"
+                      }`}
+                      onDragOver={(e) => {
+                        if (!isEditingDetails) return;
+                        e.preventDefault();
+                        setIsDragOver(true);
+                      }}
+                      onDragLeave={() => setIsDragOver(false)}
+                      onDrop={(e) => {
+                        if (!isEditingDetails) return;
+                        e.preventDefault();
+                        setIsDragOver(false);
+                        handleLogoUpload(e.dataTransfer.files?.[0]);
+                      }}
+                    >
                       <div className="h-16 w-16 rounded-xl bg-[#252536] border border-white/[0.08] flex items-center justify-center overflow-hidden shrink-0 relative group">
                         {logoPreview ? (
                           <>
@@ -431,15 +559,16 @@ export default function FacultyDashboard() {
                           accept="image/*"
                           className="hidden"
                           ref={fileInputRef}
-                          onChange={handleLogoUpload}
+                          onChange={(e) => handleLogoUpload(e.target.files?.[0])}
                         />
                         <button
                           type="button"
+                          disabled={!isEditingDetails}
                           onClick={() => fileInputRef.current?.click()}
-                          className="px-4 py-2 rounded-lg text-xs font-medium border border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 transition-colors flex items-center gap-1.5"
+                          className="px-4 py-2 rounded-lg text-xs font-medium border border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
                         >
                           <Upload className="h-3.5 w-3.5" />
-                          Choose Image
+                          {isDragOver ? "Drop Image" : "Choose Image"}
                         </button>
                       </div>
                     </div>
@@ -454,6 +583,7 @@ export default function FacultyDashboard() {
                       <select
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
+                        disabled={!isEditingDetails}
                         className={`w-full pl-10 pr-10 py-3 rounded-xl bg-[#252536] border border-white/[0.08] ${category ? "text-white" : "text-gray-500"} text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200 appearance-none`}
                       >
                         <option value="" disabled>Select Tech / Non-Tech</option>
@@ -471,6 +601,7 @@ export default function FacultyDashboard() {
                   placeholder="Update your displayed name..."
                   value={facultyName}
                   onChange={(e) => setFacultyName(e.target.value)}
+                  disabled={!isEditingDetails}
                   required
                 />
 
@@ -483,6 +614,7 @@ export default function FacultyDashboard() {
                     placeholder="Briefly describe what this society does..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
+                    disabled={!isEditingDetails}
                     className="w-full p-4 rounded-xl bg-[#252536] border border-white/[0.08] text-white placeholder-gray-500 text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200 resize-none custom-scrollbar"
                   />
                 </div>
@@ -490,10 +622,20 @@ export default function FacultyDashboard() {
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30 hover:brightness-110 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+                    disabled={!isEditingDetails || isSavingDetails}
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30 hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
                   >
-                    <CheckCircle2 className="h-4.5 w-4.5" />
-                    Save Details
+                    {isSavingDetails ? (
+                      <>
+                        <span className="h-4.5 w-4.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4.5 w-4.5" />
+                        Save Details
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -509,12 +651,65 @@ export default function FacultyDashboard() {
 
               {/* Dynamic Add Form */}
               <form onSubmit={handleAddMember} className="space-y-4 mb-6">
-                <InputField
-                  icon={Briefcase}
-                  placeholder="Position (e.g. President)"
-                  value={memberPosition}
-                  onChange={(e) => setMemberPosition(e.target.value)}
-                />
+                <div className="relative">
+                  <div className="relative group">
+                    <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-cyan-400 transition-colors" />
+                    <input
+                      type="text"
+                      placeholder="Select or type position"
+                      value={positionQuery}
+                      onFocus={() => setShowPositionDropdown(true)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setPositionQuery(value);
+                        setMemberPosition(value);
+                        setShowPositionDropdown(true);
+                      }}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl bg-[#252536] border border-white/[0.08] text-white placeholder-gray-500 text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200"
+                    />
+                    <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                  </div>
+                  {showPositionDropdown && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowPositionDropdown(false)} />
+                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-white/[0.12] bg-[#1f1f31] shadow-2xl overflow-hidden">
+                        <div className="max-h-48 overflow-y-auto custom-scrollbar py-1">
+                          {filteredPositions.map((position) => (
+                            <button
+                              key={position}
+                              type="button"
+                              onClick={() => {
+                                setMemberPosition(position);
+                                setPositionQuery(position);
+                                setShowPositionDropdown(false);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-sm text-gray-200 hover:bg-white/[0.06] transition-colors"
+                            >
+                              {position}
+                            </button>
+                          ))}
+                          {positionQuery.trim() && !CORE_POSITION_OPTIONS.some((p) => p.toLowerCase() === positionQuery.trim().toLowerCase()) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const custom = positionQuery.trim();
+                                setMemberPosition(custom);
+                                setPositionQuery(custom);
+                                setShowPositionDropdown(false);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-sm text-cyan-300 hover:bg-cyan-500/10 transition-colors border-t border-white/[0.08]"
+                            >
+                              Add custom: "{positionQuery.trim()}"
+                            </button>
+                          )}
+                          {!filteredPositions.length && !positionQuery.trim() && (
+                            <div className="px-3.5 py-2 text-xs text-gray-500">No positions available</div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <InputField
                   icon={Mail}
                   type="email"
@@ -535,6 +730,7 @@ export default function FacultyDashboard() {
                     onClick={() => {
                       setEditingMemberId(null);
                       setMemberPosition("");
+                      setPositionQuery("");
                       setMemberEmail("");
                     }}
                     className="w-full text-xs text-gray-400 hover:text-white transition-colors mt-1"

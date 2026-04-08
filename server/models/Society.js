@@ -11,6 +11,8 @@ const societySchema = new mongoose.Schema(
       fullAddress: { type: String, required: true, trim: true },
     },
     logoUrl: { type: String, default: "" },
+    category: { type: String, enum: ["tech", "non-tech", ""], default: "" },
+    description: { type: String, default: "" },
     password: { type: String, required: true },
     verified: { type: Boolean, default: false },
     status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending" },

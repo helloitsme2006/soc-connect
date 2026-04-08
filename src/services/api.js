@@ -420,6 +420,28 @@ export async function getFacultyContext() {
   return data.data;
 }
 
+export async function updateFacultySocietyDetails(payload = {}) {
+  const token = getAuthToken();
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const formData = new FormData();
+  if (payload.societyName != null) formData.append("societyName", String(payload.societyName));
+  if (payload.category != null) formData.append("category", String(payload.category));
+  if (payload.description != null) formData.append("description", String(payload.description));
+  if (payload.facultyName != null) formData.append("facultyName", String(payload.facultyName));
+  if (payload.logoFile) formData.append("logo", payload.logoFile);
+
+  const res = await fetch(`${BASE}/api/v1/auth/faculty/society-details`, {
+    method: "PUT",
+    credentials: "include",
+    headers,
+    body: formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to update society details");
+  return data;
+}
+
 export async function signup(body) {
   const res = await authFetch('/api/v1/auth/signup', {
     method: 'POST',
@@ -485,6 +507,16 @@ export async function getMe() {
   const res = await authFetch('/api/v1/auth/me');
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || 'Not authenticated');
+  return data;
+}
+
+export async function createCollegeSociety(payload) {
+  const res = await authFetch("/api/v1/auth/college/societies", {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to create society");
   return data;
 }
 

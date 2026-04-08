@@ -21,13 +21,15 @@ const {
   resolveFacultyByEmail,
   verifySignupOTP,
   getFacultyContext,
+  createCollegeSociety,
+  updateFacultySocietyDetails,
 } = require("../controllers/authController");
 const {
   getAllSignupConfigs,
   addEmail,
   removeEmail,
 } = require("../controllers/signupConfigController");
-const { auth, isAdmin, canAccessDashboard } = require("../middlewares/AuthZ");
+const { auth, isAdmin, canAccessDashboard, isCollegeAdmin } = require("../middlewares/AuthZ");
 
 const router = express.Router();
 
@@ -54,6 +56,8 @@ router.post("/profile/avatar", auth, updateAvatar);
 router.post("/faculty/resolve", resolveFacultyByEmail);
 router.post("/verify-otp", verifySignupOTP);
 router.get("/faculty/context", auth, getFacultyContext);
+router.post("/college/societies", auth, isCollegeAdmin, createCollegeSociety);
+router.put("/faculty/society-details", auth, canAccessDashboard, updateFacultySocietyDetails);
 
 router.get("/signup-config", auth, canAccessDashboard, getAllSignupConfigs);
 router.post("/signup-config/add", auth, canAccessDashboard, addEmail);

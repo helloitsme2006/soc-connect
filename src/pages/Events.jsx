@@ -10,11 +10,15 @@ import UpcomingEventSection from "../components/UpcomingEventSection";
 import { getEvents } from "../services/api";
 import { cloudinaryEventCardImageUrl } from "../utils/cloudinary";
 import { Spinner } from "@/components/ui/spinner";
+import { useAuth } from "../context/AuthContext";
+import EmptyAdminPage from "../components/EmptyAdminPage";
 
 
 gsap.registerPlugin(ScrollTrigger);
 
 const Events = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.accountType === "ADMIN";
   const containerRef = useRef();
   const heroRef = useRef();
   const eventsRef = useRef();
@@ -23,6 +27,11 @@ const Events = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    if (isAdmin) {
+      setUploadedEvents([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     getEvents()
       .then((res) => {
@@ -32,7 +41,7 @@ const Events = () => {
       })
       .catch(() => setUploadedEvents([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [isAdmin]);
 
   const formatDate = (dateStr) => {
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
@@ -81,8 +90,9 @@ const Events = () => {
   };
 
   return (
-    
-      loading ? <div className="flex items-center justify-center min-h-screen text-white text-2xl">
+      isAdmin ? (
+        <EmptyAdminPage title="Events" />
+      ) : loading ? <div className="flex items-center justify-center min-h-screen text-white text-2xl">
     <Spinner className="size-4 text-white animate-spin" />
   </div>
        :

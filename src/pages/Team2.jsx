@@ -7,10 +7,14 @@ import Lenis from "lenis";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useAuth } from "../context/AuthContext";
+import EmptyAdminPage from "../components/EmptyAdminPage";
 
 gsap.registerPlugin(ScrollTrigger);
 
 function Team2() {
+  const { user } = useAuth();
+  const isAdmin = user?.accountType === "ADMIN";
   const [activeTab, setActiveTab] = useState("core");
 
   useEffect(() => {
@@ -141,7 +145,9 @@ function Team2() {
 
   const displayedData = activeTab === "core" ? teamData : headsData;
 
-  return (
+  return isAdmin ? (
+    <EmptyAdminPage title="Team" />
+  ) : (
     <div
       ref={containerRef}
       className="w-full min-h-screen darkthemebg pt-32 overflow-hidden"

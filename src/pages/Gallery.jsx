@@ -1,10 +1,14 @@
 import React, { useRef, useEffect, useState } from "react";
 import gsap from "https://esm.sh/gsap";
+import { useAuth } from "../context/AuthContext";
+import EmptyAdminPage from "../components/EmptyAdminPage";
 
 const SCROLL_SPEED_FAST = 20;
 const SCROLL_SPEED_SLOW = 22;
 
 const Gallery = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.accountType === "ADMIN";
   const containerRef = useRef(null);
   const heroRef = useRef(null);
 
@@ -160,7 +164,9 @@ const setupScroller = (rowRef, speed, direction = "forward") => {
     { id: "r3-8", src: "/pwgatefft2.webp", title: "Project Showcase" }
   ];
 
-  return (
+  return isAdmin ? (
+    <EmptyAdminPage title="Gallery" />
+  ) : (
     <div
       ref={containerRef}
       className="relative w-full overflow-x-hidden text-white font-nunito bg-[#020617]"
