@@ -507,6 +507,31 @@ export default function FacultyDashboard() {
     position.toLowerCase().includes(positionQuery.trim().toLowerCase())
   );
 
+  const restoreSocietyDetailsForm = () => {
+    setSocietyNameInput(facultyContext.societyName || "");
+    setCategory(facultyContext.category || "");
+    setDescription(facultyContext.description || "");
+    setFacultyName(
+      [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Faculty Incharge"
+    );
+    setLogoPreview(facultyContext.logoUrl || null);
+    setLogoFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const categoryDisplayLabel =
+    category === "tech" ? "Tech" : category === "non-tech" ? "Non-Tech" : "—";
+
+  const handleToggleEditDetails = () => {
+    if (isEditingDetails) {
+      restoreSocietyDetailsForm();
+      setIsEditingDetails(false);
+    } else {
+      restoreSocietyDetailsForm();
+      setIsEditingDetails(true);
+    }
+  };
+
   /* ─── Render ────────────────────────────────────────────────────────── */
   return (
     <div className="min-h-screen bg-[#14141f] text-white">
@@ -557,19 +582,91 @@ export default function FacultyDashboard() {
               <div className="flex items-center justify-between gap-3 mb-1">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <FileText className="h-5 w-5 text-indigo-400" />
-                  Complete Society Details
+                  {isEditingDetails ? "Edit society details" : "Society Details"}
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setIsEditingDetails((v) => !v)}
+                  onClick={handleToggleEditDetails}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.12] text-gray-300 hover:text-white hover:bg-white/[0.06] transition-colors flex items-center gap-1.5"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                   {isEditingDetails ? "Cancel" : "Edit"}
                 </button>
               </div>
-              <p className="text-sm text-gray-400 mb-6 font-medium">Please provide the missing details to finalize the society profile.</p>
-              
+              {!isEditingDetails ? (
+                <p className="text-sm text-gray-500 mb-6">
+                  Your saved society profile. Click Edit to update logo, name, category, or description.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-400 mb-6 font-medium">
+                  Update the fields below and save when you are done.
+                </p>
+              )}
+
+              {!isEditingDetails ? (
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#252536]/80 to-[#1a1a28]/80 overflow-hidden">
+                  <div className="h-1.5 bg-gradient-to-r from-cyan-500/70 via-indigo-500/60 to-violet-500/50" />
+                  <div className="p-5 sm:p-6">
+                    <div className="flex flex-col sm:flex-row gap-6 sm:items-start">
+                      <div className="shrink-0 mx-auto sm:mx-0">
+                        <div className="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl border border-white/10 bg-[#1e1e2f] overflow-hidden shadow-lg shadow-black/30 ring-1 ring-white/5">
+                          {logoPreview || facultyContext.logoUrl ? (
+                            <img
+                              src={logoPreview || facultyContext.logoUrl}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center">
+                              <ImageIcon className="h-10 w-10 text-gray-600" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="min-w-0 flex-1 text-center sm:text-left space-y-4">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-widest text-gray-500 font-medium mb-1">Society</p>
+                          <h3 className="text-xl sm:text-2xl font-semibold text-white tracking-tight">
+                            {(societyNameInput || facultyContext.societyName || "—").trim() || "—"}
+                          </h3>
+                          <div className="mt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                category === "tech"
+                                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/25"
+                                  : category === "non-tech"
+                                    ? "bg-amber-500/15 text-amber-200 border-amber-500/25"
+                                    : "bg-white/5 text-gray-400 border-white/10"
+                              }`}
+                            >
+                              <Tag className="h-3 w-3 mr-1 opacity-80" />
+                              {categoryDisplayLabel}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] px-4 py-3 text-left">
+                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">Faculty name</p>
+                            <p className="text-sm font-medium text-white truncate">{facultyName || "—"}</p>
+                          </div>
+                          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] px-4 py-3 text-left">
+                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">Contact email</p>
+                            <p className="text-sm font-medium text-cyan-200/90 truncate">{facultyEmail}</p>
+                          </div>
+                        </div>
+                        <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-4 py-3 text-left">
+                          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">Description</p>
+                          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
+                            {(description || facultyContext.description || "").trim()
+                              ? (description || facultyContext.description).trim()
+                              : "No description added yet."}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <form onSubmit={handleSaveSocietyDetails} className="space-y-5 flex-1">
                 <InputField
                   label="Society Name"
@@ -707,6 +804,7 @@ export default function FacultyDashboard() {
                   </button>
                 </div>
               </form>
+              )}
             </GlassCard>
 
             {/* ───────────── CORE MEMBERS ───────────── */}
