@@ -1,10 +1,19 @@
 const SignupConfig = require("../models/SignupConfig");
 const Society = require("../models/Society");
 const SocietyFaculty = require("../models/SocietyFaculty");
+const User = require("../models/User");
 const { logActivity } = require("../utils/activityLog");
 
 async function getRequesterSociety(req) {
   const emailNorm = (req.user?.email || "").trim().toLowerCase();
+  const userId = req.user?.id;
+  if (userId) {
+    const userDoc = await User.findById(userId).select("society").lean().catch(() => null);
+    if (userDoc?.society) {
+      const societyById = await Society.findById(userDoc.society).catch(() => null);
+      if (societyById) return societyById;
+    }
+  }
   if (!emailNorm) return null;
 
   const mapped = await SocietyFaculty.findOne({ email: emailNorm }).lean().catch(() => null);

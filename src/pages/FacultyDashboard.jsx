@@ -9,6 +9,10 @@ import {
   addFacultyCoreMember,
   updateFacultyCoreMember,
   deleteFacultyCoreMember,
+  getFacultyHeadMembers,
+  addFacultyHeadMember,
+  updateFacultyHeadMember,
+  deleteFacultyHeadMember,
 } from "../services/api";
 import {
   Building2,
@@ -39,14 +43,26 @@ const DEFAULT_CORE_POSITION_OPTIONS = [
   "General Secretary",
   "Joint Secretary",
   "Treasurer",
+  "Secretary",
+];
+
+const DEFAULT_HEAD_POSITION_OPTIONS = [
   "Technical Lead",
+  "Technical Head",
   "Event Lead",
+  "Event Head",
   "Design Lead",
+  "Design Head",
   "Content Lead",
+  "Content Head",
   "PR Lead",
+  "PR Head",
   "Marketing Lead",
+  "Marketing Head",
   "Outreach Lead",
+  "Outreach Head",
   "Operations Lead",
+  "Operations Head",
 ];
 
 /* ─── Animation Variants ──────────────────────────────────────────────── */
@@ -266,6 +282,15 @@ export default function FacultyDashboard() {
   const [memberEmail, setMemberEmail] = useState("");
   const [editingMemberId, setEditingMemberId] = useState(null);
 
+  // Head Members State (department-dependent leads/heads)
+  const [headMembers, setHeadMembers] = useState([]);
+  const [headLoading, setHeadLoading] = useState(false);
+  const [headPosition, setHeadPosition] = useState("");
+  const [headPositionQuery, setHeadPositionQuery] = useState("");
+  const [showHeadPositionDropdown, setShowHeadPositionDropdown] = useState(false);
+  const [headEmail, setHeadEmail] = useState("");
+  const [editingHeadMemberId, setEditingHeadMemberId] = useState(null);
+
   const societyName = facultyContext.societyName || "—";
   const collegeName = facultyContext.collegeName || "—";
   const facultyEmail = user?.email || "—";
@@ -333,6 +358,34 @@ export default function FacultyDashboard() {
       }
     };
     loadCore();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadHeads = async () => {
+      try {
+        setHeadLoading(true);
+        const res = await getFacultyHeadMembers();
+        if (!cancelled) {
+          const rows = Array.isArray(res?.data) ? res.data : [];
+          setHeadMembers(
+            rows.map((m, idx) => ({
+              id: String(m?.id || m?.position || idx),
+              position: m?.position || "",
+              email: m?.email || "",
+            }))
+          );
+        }
+      } catch {
+        if (!cancelled) setHeadMembers([]);
+      } finally {
+        if (!cancelled) setHeadLoading(false);
+      }
+    };
+    loadHeads();
     return () => {
       cancelled = true;
     };
@@ -499,12 +552,98 @@ export default function FacultyDashboard() {
     }
   };
 
+  const handleAddHeadMember = async (e) => {
+    e.preventDefault();
+    if (!headPosition.trim() || !headEmail.trim()) {
+      toast.error("Please provide both position and email to add a head member.");
+      return;
+    }
+
+    try {
+      if (editingHeadMemberId) {
+        const res = await updateFacultyHeadMember(editingHeadMemberId, {
+          position: headPosition.trim(),
+          email: headEmail.trim(),
+        });
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setHeadMembers(
+          rows.map((m, idx) => ({
+            id: String(m?.id || m?.position || idx),
+            position: m?.position || "",
+            email: m?.email || "",
+          }))
+        );
+        toast.success("Head member updated successfully!");
+        setEditingHeadMemberId(null);
+      } else {
+        const res = await addFacultyHeadMember({
+          position: headPosition.trim(),
+          email: headEmail.trim(),
+        });
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setHeadMembers(
+          rows.map((m, idx) => ({
+            id: String(m?.id || m?.position || idx),
+            position: m?.position || "",
+            email: m?.email || "",
+          }))
+        );
+        toast.success(`Added ${headPosition.trim()} successfully!`);
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to save head member.");
+      return;
+    }
+
+    setHeadPosition("");
+    setHeadPositionQuery("");
+    setHeadEmail("");
+  };
+
+  const handleEditHeadMember = (member) => {
+    setHeadPosition(member.position);
+    setHeadPositionQuery(member.position);
+    setHeadEmail(member.email);
+    setEditingHeadMemberId(member.id);
+  };
+
+  const handleRemoveHeadMember = async (id) => {
+    try {
+      const res = await deleteFacultyHeadMember(id);
+      const rows = Array.isArray(res?.data) ? res.data : [];
+      setHeadMembers(
+        rows.map((m, idx) => ({
+          id: String(m?.id || m?.position || idx),
+          position: m?.position || "",
+          email: m?.email || "",
+        }))
+      );
+      toast.success("Head member removed.");
+      if (editingHeadMemberId === id) {
+        setEditingHeadMemberId(null);
+        setHeadPosition("");
+        setHeadPositionQuery("");
+        setHeadEmail("");
+      }
+    } catch (err) {
+      toast.error(err.message || "Failed to remove head member.");
+    }
+  };
+
   const availablePositionOptions = Array.from(
     new Set([...DEFAULT_CORE_POSITION_OPTIONS, ...coreMembers.map((m) => m.position).filter(Boolean)])
   );
 
   const filteredPositions = availablePositionOptions.filter((position) =>
     position.toLowerCase().includes(positionQuery.trim().toLowerCase())
+  );
+
+  const availableHeadPositionOptions = Array.from(
+    new Set([...DEFAULT_HEAD_POSITION_OPTIONS, ...headMembers.map((m) => m.position).filter(Boolean)])
+  );
+
+  const filteredHeadPositions = availableHeadPositionOptions.filter((position) =>
+    position.toLowerCase().includes(headPositionQuery.trim().toLowerCase())
   );
 
   const restoreSocietyDetailsForm = () => {
@@ -576,9 +715,9 @@ export default function FacultyDashboard() {
             </p>
           </GlassCard>
 
-          <div className="grid grid-cols-1 xl:grid-cols-5 gap-8">
+          <div className="space-y-8">
             {/* ───────────── SOCIETY DETAILS FORM ───────────── */}
-            <GlassCard className="xl:col-span-3 p-6 sm:p-8 flex flex-col">
+            <GlassCard className="p-6 sm:p-8 flex flex-col">
               <div className="flex items-center justify-between gap-3 mb-1">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
                   <FileText className="h-5 w-5 text-indigo-400" />
@@ -807,13 +946,16 @@ export default function FacultyDashboard() {
               )}
             </GlassCard>
 
-            {/* ───────────── CORE MEMBERS ───────────── */}
-            <GlassCard className="xl:col-span-2 p-6 sm:p-8 flex flex-col h-[650px] xl:h-auto">
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+              {/* ───────────── CORE MEMBERS ───────────── */}
+              <GlassCard className="p-6 sm:p-8 flex flex-col h-[650px] xl:h-auto">
               <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
                 <Briefcase className="h-5 w-5 text-emerald-400" />
                 Core Members
               </h2>
-              <p className="text-sm text-gray-400 mb-6 font-medium">Assign core members (e.g., President, Tech Lead) below.</p>
+              <p className="text-sm text-gray-400 mb-6 font-medium">
+                Assign department-independent positions (e.g., President, Vice President) below.
+              </p>
 
               {/* Dynamic Add Form */}
               <form onSubmit={handleAddMember} className="space-y-4 mb-6">
@@ -955,7 +1097,168 @@ export default function FacultyDashboard() {
                   </div>
                 )}
               </div>
-            </GlassCard>
+              </GlassCard>
+
+              {/* ───────────── HEAD MEMBERS ───────────── */}
+              <GlassCard className="p-6 sm:p-8 flex flex-col h-[650px] xl:h-auto">
+              <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
+                <UsersIcon className="h-5 w-5 text-cyan-400" />
+                Head Members
+              </h2>
+              <p className="text-sm text-gray-400 mb-6 font-medium">
+                Assign department-dependent lead/head positions (e.g., Technical Lead, Event Head) below.
+              </p>
+
+              <form onSubmit={handleAddHeadMember} className="space-y-4 mb-6">
+                <div className="relative">
+                  <div className="relative group">
+                    <UsersIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-cyan-400 transition-colors" />
+                    <input
+                      type="text"
+                      placeholder='Select or type position (must include "Lead" or "Head")'
+                      value={headPositionQuery}
+                      onFocus={() => setShowHeadPositionDropdown(true)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setHeadPositionQuery(value);
+                        setHeadPosition(value);
+                        setShowHeadPositionDropdown(true);
+                      }}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl bg-[#252536] border border-white/[0.08] text-white placeholder-gray-500 text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200"
+                    />
+                    <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                  </div>
+                  {showHeadPositionDropdown && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowHeadPositionDropdown(false)} />
+                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-white/[0.12] bg-[#1f1f31] shadow-2xl overflow-hidden">
+                        <div className="max-h-48 overflow-y-auto custom-scrollbar py-1">
+                          {filteredHeadPositions.map((position) => (
+                            <button
+                              key={position}
+                              type="button"
+                              onClick={() => {
+                                setHeadPosition(position);
+                                setHeadPositionQuery(position);
+                                setShowHeadPositionDropdown(false);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-sm text-gray-200 hover:bg-white/[0.06] transition-colors"
+                            >
+                              {position}
+                            </button>
+                          ))}
+                          {headPositionQuery.trim() &&
+                            !availableHeadPositionOptions.some(
+                              (p) => p.toLowerCase() === headPositionQuery.trim().toLowerCase()
+                            ) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const custom = headPositionQuery.trim();
+                                  setHeadPosition(custom);
+                                  setHeadPositionQuery(custom);
+                                  setShowHeadPositionDropdown(false);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-sm text-cyan-300 hover:bg-cyan-500/10 transition-colors border-t border-white/[0.08]"
+                              >
+                                Add custom: "{headPositionQuery.trim()}"
+                              </button>
+                            )}
+                          {!filteredHeadPositions.length && !headPositionQuery.trim() && (
+                            <div className="px-3.5 py-2 text-xs text-gray-500">No positions available</div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <InputField
+                  icon={Mail}
+                  type="email"
+                  placeholder="Member Email ID"
+                  value={headEmail}
+                  onChange={(e) => setHeadEmail(e.target.value)}
+                />
+
+                <button
+                  type="submit"
+                  className="w-full py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-medium text-sm hover:bg-cyan-500/20 hover:border-cyan-500/50 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  {editingHeadMemberId ? "Update Member" : "Add Member"}
+                </button>
+
+                {editingHeadMemberId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingHeadMemberId(null);
+                      setHeadPosition("");
+                      setHeadPositionQuery("");
+                      setHeadEmail("");
+                    }}
+                    className="w-full text-xs text-gray-400 hover:text-white transition-colors mt-1"
+                  >
+                    Cancel Editing
+                  </button>
+                )}
+              </form>
+
+              <div className="flex-1 flex flex-col min-h-0 bg-[#252536]/50 rounded-xl border border-white/[0.05] p-2">
+                <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-white/[0.05] mb-2 flex justify-between">
+                  <span>Assigned ({headMembers.length})</span>
+                </div>
+
+                {headMembers.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
+                    <UsersIcon className="h-10 w-10 text-gray-600 mb-3" />
+                    <p className="text-gray-400 font-medium text-sm">
+                      {headLoading ? "Loading members..." : "No members added yet"}
+                    </p>
+                    <p className="text-gray-500 text-xs mt-1 max-w-[240px]">
+                      Add department leads/heads here (e.g., Technical Lead).
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                    <AnimatePresence>
+                      {headMembers.map((member) => (
+                        <motion.div
+                          key={member.id}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95, height: 0, margin: 0 }}
+                          className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/[0.04] hover:border-white/[0.1] transition-colors group"
+                        >
+                          <div className="min-w-0 pr-3">
+                            <p className="text-sm font-medium text-white truncate">{member.position}</p>
+                            <p className="text-xs text-gray-400 mt-0.5 truncate">{member.email}</p>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleEditHeadMember(member)}
+                              className="p-1.5 rounded-md text-amber-400 hover:bg-amber-500/10 transition-colors"
+                              title="Edit Member"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleRemoveHeadMember(member.id)}
+                              className="p-1.5 rounded-md text-red-400 hover:bg-red-500/10 transition-colors"
+                              title="Remove Member"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )}
+              </div>
+              </GlassCard>
+            </div>
           </div>
         </motion.div>
       </main>

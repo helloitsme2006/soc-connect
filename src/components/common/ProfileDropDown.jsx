@@ -40,6 +40,9 @@ function ProfileDropDown({
 
   if (!user) return null;
 
+  const isSocietyScopedUser =
+    isSocietyRole(user.accountType) || Boolean(user.society) || Boolean(user.facultyContext);
+
   const borderCls = isDarkNavbar
     ? "border-gray-500/50 hover:border-cyan-500/60"
     : "border-green-400/50 hover:border-green-400";
@@ -202,7 +205,7 @@ function ProfileDropDown({
             onClick={() => {
               setOpen(false);
               navigate(
-                isSocietyRole(user.accountType)
+                isSocietyScopedUser
                   ? "/manage-society"
                   : "/manage-team",
               );
@@ -214,12 +217,12 @@ function ProfileDropDown({
             </span>
             <span className="flex-1">
               <span className="block text-xs font-medium">
-                {isSocietyRole(user.accountType)
+                {isSocietyScopedUser
                   ? "Manage society"
                   : "Manage your team"}
               </span>
               <span className="block text-[10px] text-gray-500">
-                {isSocietyRole(user.accountType)
+                {isSocietyScopedUser
                   ? "All departments & members"
                   : "Add members & upload Excel"}
               </span>

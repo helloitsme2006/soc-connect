@@ -401,6 +401,55 @@ export async function resolveFacultyByEmail(email) {
   return data.data;
 }
 
+export async function listCollegesPublic(q = "") {
+  const res = await fetch(`${BASE}/api/v1/auth/public/colleges?q=${encodeURIComponent(String(q || ""))}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to fetch colleges");
+  return data.data || [];
+}
+
+export async function listCollegeSocietiesPublic(collegeName) {
+  const res = await fetch(`${BASE}/api/v1/auth/public/college-societies?collegeName=${encodeURIComponent(String(collegeName || ""))}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to fetch societies");
+  return data.data || [];
+}
+
+export async function resolveCoreSignup({ collegeName, societyId, email }) {
+  const res = await fetch(`${BASE}/api/v1/auth/core/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ collegeName, societyId, email }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to resolve signup");
+  return data.data;
+}
+
+export async function sendCoreSignupOTP({ societyId, department, email }) {
+  const res = await fetch(`${BASE}/api/v1/auth/core/sendotp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ societyId, department, email }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to send OTP");
+  return data;
+}
+
+export async function verifyCoreOtpAndLogin({ societyId, email, otp, fullName }) {
+  const res = await fetch(`${BASE}/api/v1/auth/core/verify-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ societyId, email, otp, fullName }),
+    credentials: "include",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "OTP verification failed");
+  if (data.token) setAuthToken(data.token);
+  return data;
+}
+
 /** Verify OTP for signup modal (faculty flow uses this step). */
 export async function verifySignupOTP({ email, otp }) {
   const res = await fetch(`${BASE}/api/v1/auth/verify-otp`, {
@@ -475,6 +524,42 @@ export async function deleteFacultyCoreMember(id) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Failed to remove core member");
+  return data;
+}
+
+export async function getFacultyHeadMembers() {
+  const res = await authFetch("/api/v1/auth/faculty/head-members");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to fetch head members");
+  return data;
+}
+
+export async function addFacultyHeadMember(payload = {}) {
+  const res = await authFetch("/api/v1/auth/faculty/head-members", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to add head member");
+  return data;
+}
+
+export async function updateFacultyHeadMember(id, payload = {}) {
+  const res = await authFetch(`/api/v1/auth/faculty/head-members/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to update head member");
+  return data;
+}
+
+export async function deleteFacultyHeadMember(id) {
+  const res = await authFetch(`/api/v1/auth/faculty/head-members/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to remove head member");
   return data;
 }
 
