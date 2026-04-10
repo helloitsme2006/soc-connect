@@ -80,7 +80,7 @@ export default function ManageSociety() {
 
   // Initial departments load: if Redux has nothing, show spinner; otherwise hydrate from Redux and refresh in background.
   useEffect(() => {
-    if (!user || !isSocietyRole(user?.accountType)) return;
+    if (!user || !(isSocietyRole(user?.accountType) || user?.society)) return;
     if (!manageSociety.departments?.length) {
       console.log("redux has nothing");
       setLoading(true);
@@ -294,7 +294,7 @@ export default function ManageSociety() {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
-  if (!isSocietyRole(user.accountType)) return <Navigate to="/manage-team" replace />;
+  if (!(isSocietyRole(user.accountType) || user?.society)) return <Navigate to="/manage-team" replace />;
 
   if (selectedDepartment) {
     return (

@@ -401,6 +401,55 @@ export async function resolveFacultyByEmail(email) {
   return data.data;
 }
 
+export async function listCollegesPublic(q = "") {
+  const res = await fetch(`${BASE}/api/v1/auth/public/colleges?q=${encodeURIComponent(String(q || ""))}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to fetch colleges");
+  return data.data || [];
+}
+
+export async function listCollegeSocietiesPublic(collegeName) {
+  const res = await fetch(`${BASE}/api/v1/auth/public/college-societies?collegeName=${encodeURIComponent(String(collegeName || ""))}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to fetch societies");
+  return data.data || [];
+}
+
+export async function resolveCoreSignup({ collegeName, societyId, email }) {
+  const res = await fetch(`${BASE}/api/v1/auth/core/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ collegeName, societyId, email }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to resolve signup");
+  return data.data;
+}
+
+export async function sendCoreSignupOTP({ societyId, department, email }) {
+  const res = await fetch(`${BASE}/api/v1/auth/core/sendotp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ societyId, department, email }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to send OTP");
+  return data;
+}
+
+export async function verifyCoreOtpAndLogin({ societyId, email, otp, fullName }) {
+  const res = await fetch(`${BASE}/api/v1/auth/core/verify-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ societyId, email, otp, fullName }),
+    credentials: "include",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "OTP verification failed");
+  if (data.token) setAuthToken(data.token);
+  return data;
+}
+
 /** Verify OTP for signup modal (faculty flow uses this step). */
 export async function verifySignupOTP({ email, otp }) {
   const res = await fetch(`${BASE}/api/v1/auth/verify-otp`, {
@@ -418,6 +467,100 @@ export async function getFacultyContext() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || "Failed to fetch faculty context");
   return data.data;
+}
+
+export async function updateFacultySocietyDetails(payload = {}) {
+  const token = getAuthToken();
+  const headers = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const formData = new FormData();
+  if (payload.societyName != null) formData.append("societyName", String(payload.societyName));
+  if (payload.category != null) formData.append("category", String(payload.category));
+  if (payload.description != null) formData.append("description", String(payload.description));
+  if (payload.facultyName != null) formData.append("facultyName", String(payload.facultyName));
+  if (payload.logoFile) formData.append("logo", payload.logoFile);
+
+  const res = await fetch(`${BASE}/api/v1/auth/faculty/society-details`, {
+    method: "PUT",
+    credentials: "include",
+    headers,
+    body: formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to update society details");
+  return data;
+}
+
+export async function getFacultyCoreMembers() {
+  const res = await authFetch("/api/v1/auth/faculty/core-members");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to fetch core members");
+  return data;
+}
+
+export async function addFacultyCoreMember(payload = {}) {
+  const res = await authFetch("/api/v1/auth/faculty/core-members", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to add core member");
+  return data;
+}
+
+export async function updateFacultyCoreMember(id, payload = {}) {
+  const res = await authFetch(`/api/v1/auth/faculty/core-members/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to update core member");
+  return data;
+}
+
+export async function deleteFacultyCoreMember(id) {
+  const res = await authFetch(`/api/v1/auth/faculty/core-members/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to remove core member");
+  return data;
+}
+
+export async function getFacultyHeadMembers() {
+  const res = await authFetch("/api/v1/auth/faculty/head-members");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to fetch head members");
+  return data;
+}
+
+export async function addFacultyHeadMember(payload = {}) {
+  const res = await authFetch("/api/v1/auth/faculty/head-members", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to add head member");
+  return data;
+}
+
+export async function updateFacultyHeadMember(id, payload = {}) {
+  const res = await authFetch(`/api/v1/auth/faculty/head-members/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to update head member");
+  return data;
+}
+
+export async function deleteFacultyHeadMember(id) {
+  const res = await authFetch(`/api/v1/auth/faculty/head-members/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to remove head member");
+  return data;
 }
 
 export async function signup(body) {
@@ -485,6 +628,16 @@ export async function getMe() {
   const res = await authFetch('/api/v1/auth/me');
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message || 'Not authenticated');
+  return data;
+}
+
+export async function createCollegeSociety(payload) {
+  const res = await authFetch("/api/v1/auth/college/societies", {
+    method: "POST",
+    body: JSON.stringify(payload || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || "Failed to create society");
   return data;
 }
 
@@ -790,52 +943,6 @@ export async function downloadTeamTemplate() {
   a.download = 'team_members_template.xlsx';
   a.click();
   URL.revokeObjectURL(url);
-}
-
-// Jam the Web judging (GET is public for view-only; POST requires auth)
-export async function getJamTheWebTeams(sortBy = "id") {
-  const params = new URLSearchParams();
-  if (sortBy === "score") params.set("sort", "score");
-  const res = await authFetch(`/api/v1/jamtheweb?${params.toString()}`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Failed to fetch Jam the Web data");
-  return data;
-}
-
-/** Public fetch for guests (no auth required). */
-export async function getJamTheWebTeamsPublic(sortBy = "id") {
-  const params = new URLSearchParams();
-  if (sortBy === "score") params.set("sort", "score");
-  const res = await fetch(`${BASE}/api/v1/jamtheweb?${params.toString()}`, { credentials: "include" });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Failed to fetch Jam the Web data");
-  return data;
-}
-
-/** Public: check if Jam the Web results are declared. */
-export async function getJamTheWebResultsDeclared() {
-  const res = await fetch(`${BASE}/api/v1/jamtheweb/declared`, { credentials: "include" });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Failed to fetch");
-  return data;
-}
-
-/** Declare Jam the Web results (auth required). */
-export async function declareJamTheWebResults() {
-  const res = await authFetch("/api/v1/jamtheweb/declare", { method: "POST" });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Failed to declare results");
-  return data;
-}
-
-export async function submitJamTheWebScores(teams) {
-  const res = await authFetch("/api/v1/jamtheweb/submit", {
-    method: "POST",
-    body: JSON.stringify({ teams }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || "Failed to submit scores");
-  return data;
 }
 
 // ── Interview Management ──────────────────────────────────────────────────

@@ -1,13 +1,8 @@
 const mongoose = require("mongoose");
 
-const signupConfigSchema = new mongoose.Schema(
+const departmentConfigSchema = new mongoose.Schema(
   {
-    department: {
-      type: String,
-      required: true,
-      unique: true,
-      trim: true,
-    },
+    department: { type: String, required: true, trim: true },
     allowedEmails: [
       {
         type: String,
@@ -15,6 +10,19 @@ const signupConfigSchema = new mongoose.Schema(
         lowercase: true,
       },
     ],
+  },
+  { _id: false }
+);
+
+const signupConfigSchema = new mongoose.Schema(
+  {
+    society: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Society",
+      required: true,
+      unique: true,
+    },
+    departments: [departmentConfigSchema],
   },
   { timestamps: true }
 );

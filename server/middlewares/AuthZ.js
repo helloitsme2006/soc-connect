@@ -85,3 +85,21 @@ exports.canAccessDashboard = (req, res, next) => {
     });
   }
 };
+
+exports.isCollegeAdmin = (req, res, next) => {
+  try {
+    if (req.user?.accountType !== "CollegeAdmin") {
+      return res.status(403).json({
+        success: false,
+        message: "College admin only.",
+      });
+    }
+    next();
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "College admin check failed.",
+      error: err.message,
+    });
+  }
+};

@@ -30,7 +30,6 @@ import ResultPage from "./pages/ResultPage"
 import Quiz from "./pages/Quiz"
 import Leaderboard from "./pages/Leaderboard"
 import QuizResult from "./pages/QuizResult"
-import JamTheWeb from "./pages/JamTheWeb"
 import ManageTeam from "./pages/ManageTeam"
 import ManageSociety from "./pages/ManageSociety"
 import UniversityAdminDashboard from "./pages/UniversityAdminDashboard"
@@ -43,6 +42,43 @@ import InterviewSetup from "./pages/InterviewSetup"
 import InterviewDashboard from "./pages/InterviewDashboard"
 import MyInterview from "./pages/MyInterview"
 import { AnimatePresence, motion } from "framer-motion"
+import { useAuth } from "./context/AuthContext"
+import { isSocietyRole } from "./services/api"
+
+function RequireAuth({ children }) {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+  if (loading) return null
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+  return children
+}
+
+function RequireRole({ roles, children }) {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+  if (loading) return null
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+  if (roles && !roles.includes(user.accountType)) {
+    return <Navigate to="/" replace />
+  }
+  return children
+}
+
+function RequireSocietyScoped({ children }) {
+  const { user, loading } = useAuth()
+  const location = useLocation()
+  if (loading) return null
+  if (!user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+  const ok = isSocietyRole(user.accountType) || Boolean(user.society) || Boolean(user.facultyContext)
+  if (!ok) return <Navigate to="/manage-team" replace />
+  return children
+}
 
 function App() {
   const location = useLocation()
@@ -51,7 +87,6 @@ function App() {
     "/profile",
     "/manage-team",
     "/manage-society",
-    "/jam-the-web",
   ]
 
   const shouldAnimatePage = dropdownBasePaths.some((base) =>
@@ -104,14 +139,63 @@ function App() {
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password/:token" element={<ResetPassword />} />
                 <Route path="/signup" element={<Signup />} />
-                <Route path="/dashboard" element={<AdminSignupConfig />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <RequireRole roles={["ADMIN", "Chairperson", "Vice-Chairperson"]}>
+                      <AdminSignupConfig />
+                    </RequireRole>
+                  }
+                />
                 <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/manage-team" element={<ManageTeam />} />
-                <Route path="/manage-society" element={<ManageSociety />} />
-                <Route path="/college-admin" element={<UniversityAdminDashboard />} />
-                <Route path="/university-admin" element={<UniversityLevelAdminDashboard />} />
-                <Route path="/faculty-dashboard" element={<FacultyDashboard />} />
+                <Route
+                  path="/profile"
+                  element={
+                    <RequireAuth>
+                      <Profile />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/manage-team"
+                  element={
+                    <RequireAuth>
+                      <ManageTeam />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="/manage-society"
+                  element={
+                    <RequireSocietyScoped>
+                      <ManageSociety />
+                    </RequireSocietyScoped>
+                  }
+                />
+                <Route
+                  path="/college-admin"
+                  element={
+                    <RequireRole roles={["CollegeAdmin"]}>
+                      <UniversityAdminDashboard />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/university-admin"
+                  element={
+                    <RequireRole roles={["UniversityAdmin"]}>
+                      <UniversityLevelAdminDashboard />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/faculty-dashboard"
+                  element={
+                    <RequireRole roles={["ADMIN", "Chairperson", "Vice-Chairperson"]}>
+                      <FacultyDashboard />
+                    </RequireRole>
+                  }
+                />
                 <Route path="/join-team/:token" element={<JoinTeamByLink />} />
                 <Route path="/notfound" element={<NotFound></NotFound>} />
                 <Route path="/contact" element={<Contact />} />
@@ -121,10 +205,30 @@ function App() {
                 <Route path="/quiz" element={<Quiz />} />
                 <Route path="/leaderboard" element={<Leaderboard />} />
                 <Route path="/quiz/result" element={<QuizResult />} />
-                <Route path="/jam-the-web" element={<JamTheWeb />} />
-                <Route path="/interview-setup" element={<InterviewSetup />} />
-                <Route path="/interview-dashboard" element={<InterviewDashboard />} />
-                <Route path="/my-interview" element={<MyInterview />} />
+                <Route
+                  path="/interview-setup"
+                  element={
+                    <RequireRole roles={["ADMIN", "Chairperson", "Vice-Chairperson"]}>
+                      <InterviewSetup />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/interview-dashboard"
+                  element={
+                    <RequireRole roles={["ADMIN", "Chairperson", "Vice-Chairperson"]}>
+                      <InterviewDashboard />
+                    </RequireRole>
+                  }
+                />
+                <Route
+                  path="/my-interview"
+                  element={
+                    <RequireAuth>
+                      <MyInterview />
+                    </RequireAuth>
+                  }
+                />
               {/* </Route> */}
             </Routes>
           </motion.main>

@@ -35,11 +35,14 @@ const societySignupConfigSchema = new mongoose.Schema(
     societyRegistrationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SocietyRegistration",
-      required: true,
+      required: false,
       unique: true,
+      sparse: true,
     },
     societyName: { type: String, default: "" },
     collegeName: { type: String, default: "" },
+    facultyEmail: { type: String, default: "", trim: true, lowercase: true },
+    source: { type: String, enum: ["isolated", "college-admin"], default: "isolated" },
     departments: [societyDepartmentConfigSchema],
   },
   { timestamps: true }

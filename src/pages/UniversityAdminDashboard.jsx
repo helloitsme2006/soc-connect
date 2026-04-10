@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -26,6 +26,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { createCollegeSociety } from "../services/api";
 
 /* ─── Sample Data ─────────────────────────────────────────────────────── */
 const INITIAL_COLLEGE = {
@@ -35,14 +36,6 @@ const INITIAL_COLLEGE = {
   adminName: "Dr. Rajesh Kumar",
   adminEmail: "admin@bvcoe.ac.in",
 };
-
-const INITIAL_SOCIETIES = [
-  { id: "gfg-connect", name: "GFG", facultyName: "Dr. Arvind Singh", facultyEmail: "gfg@bvcoe.ac.in", link: "http://localhost:5174/" },
-  { id: 1, name: "Robotics Club", facultyName: "Dr. Meena Sharma", facultyEmail: "meena.sharma@bvcoe.ac.in" },
-  { id: 2, name: "Literary Society", facultyName: "Prof. Anil Verma", facultyEmail: "anil.verma@bvcoe.ac.in" },
-  { id: 3, name: "Coding Club", facultyName: "Dr. Priya Patel", facultyEmail: "priya.patel@bvcoe.ac.in" },
-  { id: 4, name: "Music Society", facultyName: "Prof. Suresh Iyer", facultyEmail: "suresh.iyer@bvcoe.ac.in" },
-];
 
 /* ─── Animation Variants ──────────────────────────────────────────────── */
 const staggerContainer = {
@@ -239,7 +232,7 @@ function DashboardNav({ adminName }) {
    MAIN PAGE
    ═════════════════════════════════════════════════════════════════════ */
 export default function UniversityAdminDashboard() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const college = useMemo(() => {
     const ctx = user?.collegeContext || {};
     const adminNameFromUser = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim();
@@ -251,7 +244,25 @@ export default function UniversityAdminDashboard() {
       adminEmail: ctx.adminEmail || user?.email || INITIAL_COLLEGE.adminEmail,
     };
   }, [user]);
-  const [societies, setSocieties] = useState(INITIAL_SOCIETIES);
+  const fetchedSocieties = useMemo(() => {
+    const fromCtx = user?.collegeContext?.societies;
+    if (!Array.isArray(fromCtx)) return [];
+    return fromCtx
+      .map((s, index) => ({
+        id: String(s?.id || s?._id || `${index}`),
+        name: (s?.name || s?.societyName || "").trim(),
+        facultyName: (s?.facultyName || "").trim() || "—",
+        facultyEmail: (s?.facultyEmail || "").trim() || "—",
+        link: s?.link || "",
+        status: s?.status === "pending" ? "pending" : "active",
+      }))
+      .filter((s) => s.name);
+  }, [user]);
+  const [societies, setSocieties] = useState([]);
+
+  useEffect(() => {
+    setSocieties(fetchedSocieties);
+  }, [fetchedSocieties]);
 
   // Create society form
   const [facultyName, setFacultyName] = useState("");
@@ -268,21 +279,46 @@ export default function UniversityAdminDashboard() {
   /* ── handlers ── */
   const handleCreateSociety = (e) => {
     e.preventDefault();
-    if (!facultyName.trim() || !facultyEmail.trim() || !societyName.trim()) {
-      toast.error("Please fill in all fields");
+    if (!facultyEmail.trim() || !societyName.trim()) {
+      toast.error("Society name and faculty email are required");
       return;
     }
-    const newSociety = {
-      id: Date.now(),
-      name: societyName.trim(),
-      facultyName: facultyName.trim(),
+    createCollegeSociety({
+      societyName: societyName.trim(),
       facultyEmail: facultyEmail.trim(),
-    };
-    setSocieties((prev) => [newSociety, ...prev]);
-    setFacultyName("");
-    setFacultyEmail("");
-    setSocietyName("");
-    toast.success(`"${newSociety.name}" society created successfully!`);
+    })
+      .then((res) => {
+        const created = res?.data || {};
+        const newSociety = {
+          id: String(created.id || Date.now()),
+          name: (created.name || societyName).trim(),
+          facultyName: facultyName.trim() || "—",
+          facultyEmail: (created.facultyEmail || facultyEmail).trim().toLowerCase(),
+          link: "",
+          status: "pending",
+        };
+        setSocieties((prev) => [newSociety, ...prev]);
+        setUser((prev) => {
+          if (!prev) return prev;
+          const nextSocieties = Array.isArray(prev.collegeContext?.societies)
+            ? [newSociety, ...prev.collegeContext.societies]
+            : [newSociety];
+          return {
+            ...prev,
+            collegeContext: {
+              ...(prev.collegeContext || {}),
+              societies: nextSocieties,
+            },
+          };
+        });
+        setFacultyName("");
+        setFacultyEmail("");
+        setSocietyName("");
+        toast.success(`"${newSociety.name}" created as pending. It will activate after faculty signup.`);
+      })
+      .catch((err) => {
+        toast.error(err.message || "Failed to create society");
+      });
   };
 
   const handleAddIsolated = (e) => {
@@ -433,7 +469,7 @@ export default function UniversityAdminDashboard() {
           </div>
 
           {/* ───────────── EXISTING SOCIETIES ───────────── */}
-          <motion.div variants={fadeUp}>
+          <div>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <BookOpen className="h-5 w-5 text-emerald-400" />
@@ -460,17 +496,10 @@ export default function UniversityAdminDashboard() {
                 <p className="text-gray-600 text-sm max-w-xs">Create a new society above or add an existing one to get started.</p>
               </motion.div>
             ) : (
-              <motion.div
-                variants={staggerContainer}
-                initial="hidden"
-                animate="visible"
-                className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
-              >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {societies.map((s) => (
-                  <motion.div
+                  <div
                     key={s.id}
-                    variants={fadeUp}
-                    whileHover={{ scale: 1.015, boxShadow: "0 8px 36px rgba(0,0,0,0.32)" }}
                     className={`rounded-2xl border border-white/[0.07] bg-gradient-to-br from-[#1e1e2f]/80 to-[#27253a]/80 overflow-hidden group ${s.link ? "cursor-pointer ring-1 ring-cyan-500/0 hover:ring-cyan-500/50" : "cursor-default"}`}
                     style={{ boxShadow: "0 4px 24px rgba(0,0,0,0.18)" }}
                     onClick={() => {
@@ -484,7 +513,18 @@ export default function UniversityAdminDashboard() {
                     <div className="p-5">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-base font-semibold text-white truncate">{s.name}</h3>
-                        {s.link && <ExternalLink className="h-4 w-4 text-cyan-400 opacity-70 group-hover:opacity-100 transition-opacity shrink-0" />}
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider ${
+                              s.status === "pending"
+                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                            }`}
+                          >
+                            {s.status === "pending" ? "Pending" : "Active"}
+                          </span>
+                          {s.link && <ExternalLink className="h-4 w-4 text-cyan-400 opacity-70 group-hover:opacity-100 transition-opacity shrink-0" />}
+                        </div>
                       </div>
 
                       <div className="space-y-2 mb-5">
@@ -532,11 +572,11 @@ export default function UniversityAdminDashboard() {
                         </button>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 ))}
-              </motion.div>
+              </div>
             )}
-          </motion.div>
+          </div>
         </motion.div>
       </main>
 

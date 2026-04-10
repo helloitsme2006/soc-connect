@@ -3,6 +3,8 @@ const path = require("path");
 const { getTeamMemberModel } = require("../models/TeamMember");
 const TeamInviteLink = require("../models/TeamInviteLink");
 const SignupConfig = require("../models/SignupConfig");
+const Society = require("../models/Society");
+const SocietyFaculty = require("../models/SocietyFaculty");
 const User = require("../models/User");
 const PredefinedProfile = require("../models/PredefinedProfile");
 const { imageUpload, deleteImageByUrl } = require("../config/cloudinary");
@@ -10,16 +12,6 @@ const { logActivity } = require("../utils/activityLog");
 const XLSX = require("xlsx");
 
 const SOCIETY_ROLES = ["ADMIN", "Chairperson", "Vice-Chairperson"];
-const TEAM_DEPARTMENTS = [
-  "Social Media and Promotion",
-  "Technical",
-  "Event Management",
-  "Public Relation and Outreach",
-  "Design",
-  "Content and Documentation",
-  "Photography and Videography",
-  "Sponsorship and Marketing",
-];
 
 const EXCEL_COLUMNS = [
   "name",
@@ -32,24 +24,63 @@ const EXCEL_COLUMNS = [
   "non_tech_society",
 ];
 
-function resolveDepartment(req) {
-  const accountType = req.user?.accountType;
+async function resolveSocietyScope(req) {
+  const userId = req.user?.id;
+  if (!userId) return { society: null, positions: [] };
+  const userDoc = await User.findById(userId).select("society").lean().catch(() => null);
+  if (!userDoc?.society) return { society: null, positions: [] };
+  const society = await Society.findById(userDoc.society).lean().catch(() => null);
+  const positions = Array.isArray(society?.positions)
+    ? society.positions.map((p) => String(p || "").trim()).filter(Boolean)
+    : [];
+  return { society, positions };
+}
+
+async function resolveDepartment(req) {
+  const accountType = (req.user?.accountType || "").trim();
   if (!accountType) return null;
-  const isSociety = SOCIETY_ROLES.includes(accountType);
-  const dept = isSociety ? req.query?.department || req.body?.department : accountType;
-  if (!dept) return null;
-  if (isSociety && !TEAM_DEPARTMENTS.includes(dept)) return null;
-  if (!isSociety && dept !== accountType) return null;
-  return dept;
+
+  const { positions } = await resolveSocietyScope(req);
+  const societyScoped = SOCIETY_ROLES.includes(accountType) || positions.length > 0;
+
+  const dept = societyScoped ? req.query?.department || req.body?.department : accountType;
+  const deptTrim = String(dept || "").trim();
+  if (!deptTrim) return null;
+
+  if (societyScoped) {
+    const match = positions.find((p) => p.toLowerCase() === deptTrim.toLowerCase());
+    return match || null;
+  }
+
+  return deptTrim === accountType ? deptTrim : null;
+}
+
+async function resolveRequesterSociety(req) {
+  const emailNorm = (req.user?.email || "").trim().toLowerCase();
+  const userId = req.user?.id;
+  if (userId) {
+    const userDoc = await User.findById(userId).select("society").lean().catch(() => null);
+    if (userDoc?.society) {
+      const societyById = await Society.findById(userDoc.society).lean().catch(() => null);
+      if (societyById) return societyById;
+    }
+  }
+  if (!emailNorm) return null;
+  const mapped = await SocietyFaculty.findOne({ email: emailNorm }).lean().catch(() => null);
+  if (mapped) {
+    const society = await Society.findOne({ name: (mapped.societyName || "").trim() }).lean().catch(() => null);
+    if (society) return society;
+  }
+  return Society.findOne({ email: emailNorm }).lean().catch(() => null);
 }
 
 exports.getDepartments = async (req, res) => {
   try {
-    const accountType = req.user?.accountType;
-    if (!SOCIETY_ROLES.includes(accountType)) {
-      return res.status(403).json({ success: false, message: "Not authorized." });
-    }
-    return res.status(200).json({ success: true, data: TEAM_DEPARTMENTS });
+    const { positions } = await resolveSocietyScope(req);
+    const accountType = (req.user?.accountType || "").trim();
+    const societyScoped = SOCIETY_ROLES.includes(accountType) || positions.length > 0;
+    if (!societyScoped) return res.status(403).json({ success: false, message: "Not authorized." });
+    return res.status(200).json({ success: true, data: positions });
   } catch (error) {
     console.error("getDepartments error:", error);
     return res.status(500).json({ success: false, message: error.message });
@@ -58,7 +89,7 @@ exports.getDepartments = async (req, res) => {
 
 exports.getMyTeamMembers = async (req, res) => {
   try {
-    const department = resolveDepartment(req);
+    const department = await resolveDepartment(req);
     if (!department) {
       return res.status(400).json({
         success: false,
@@ -82,7 +113,7 @@ exports.getMyTeamMembers = async (req, res) => {
  */
 exports.getDepartmentRoster = async (req, res) => {
   try {
-    const department = resolveDepartment(req);
+    const department = await resolveDepartment(req);
     if (!department) {
       return res.status(400).json({
         success: false,
@@ -91,8 +122,13 @@ exports.getDepartmentRoster = async (req, res) => {
           : "Department not found.",
       });
     }
-    const config = await SignupConfig.findOne({ department }).lean();
-    const allowedEmails = (config && config.allowedEmails) ? [...config.allowedEmails] : [];
+    const society = await resolveRequesterSociety(req);
+    if (!society) {
+      return res.status(404).json({ success: false, message: "Society not found." });
+    }
+    const config = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs).lean() : null;
+    const deptCfg = (config?.departments || []).find((d) => (d.department || "").trim() === department);
+    const allowedEmails = deptCfg?.allowedEmails ? [...deptCfg.allowedEmails] : [];
     const roster = [];
     for (const email of allowedEmails) {
       const emailNorm = (email || "").trim().toLowerCase();
@@ -122,7 +158,7 @@ exports.getDepartmentRoster = async (req, res) => {
 
 exports.addMember = async (req, res) => {
   try {
-    const department = resolveDepartment(req);
+    const department = await resolveDepartment(req);
     if (!department) {
       return res.status(400).json({
         success: false,
@@ -187,7 +223,7 @@ exports.addMember = async (req, res) => {
 
 exports.updateMember = async (req, res) => {
   try {
-    const department = resolveDepartment(req);
+    const department = await resolveDepartment(req);
     if (!department) {
       return res.status(400).json({
         success: false,
@@ -245,7 +281,7 @@ exports.updateMember = async (req, res) => {
 
 exports.deleteMember = async (req, res) => {
   try {
-    const department = resolveDepartment(req);
+    const department = await resolveDepartment(req);
     if (!department) {
       return res.status(400).json({
         success: false,
@@ -278,7 +314,7 @@ exports.deleteMember = async (req, res) => {
 
 exports.uploadExcel = async (req, res) => {
   try {
-    const department = resolveDepartment(req);
+    const department = await resolveDepartment(req);
     if (!department) {
       return res.status(400).json({
         success: false,

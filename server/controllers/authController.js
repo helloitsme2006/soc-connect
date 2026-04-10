@@ -7,6 +7,7 @@ const SignupConfig = require("../models/SignupConfig");
 const SocietyRegistration = require("../models/SocietyRegistration");
 const SocietySignupConfig = require("../models/SocietySignupConfig");
 const SocietyFaculty = require("../models/SocietyFaculty");
+const Society = require("../models/Society");
 const College = require("../models/College");
 const University = require("../models/University");
 const crypto = require("crypto");
@@ -21,6 +22,7 @@ const { getEventUploadAllowedList } = require("./eventController");
 const SOCIETY_ROLES = ["ADMIN", "Chairperson", "Vice-Chairperson"];
 
 const PREDEFINED_IMAGE_BASE = "https://www.gfg-bvcoe.com";
+const cryptoRandomPassword = () => crypto.randomBytes(24).toString("hex");
 
 function findSocietyDepartmentAllowed(societySignupConfig, department, emailNorm) {
   if (!societySignupConfig || !Array.isArray(societySignupConfig.departments)) return false;
@@ -29,18 +31,35 @@ function findSocietyDepartmentAllowed(societySignupConfig, department, emailNorm
   return Array.isArray(entry.allowedEmails) ? entry.allowedEmails.includes(emailNorm) : false;
 }
 
-function getAllowedDepartmentsFromGlobalSignupConfig(emailNorm) {
-  return SignupConfig.find({ allowedEmails: emailNorm }).then((configs) =>
-    configs.map((c) => (c.department || "").trim()).filter(Boolean),
-  );
+async function getAllowedDepartmentsFromGlobalSignupConfig(emailNorm) {
+  const mapped = await SocietyFaculty.findOne({ email: emailNorm }).lean().catch(() => null);
+  if (mapped) {
+    const society = await Society.findOne({ name: (mapped.societyName || "").trim() }).lean().catch(() => null);
+    if (society?.signupconfigs) {
+      const cfg = await SignupConfig.findById(society.signupconfigs).lean().catch(() => null);
+      if (cfg?.departments?.length) {
+        return cfg.departments
+          .filter((d) => Array.isArray(d.allowedEmails) && d.allowedEmails.includes(emailNorm))
+          .map((d) => (d.department || "").trim())
+          .filter(Boolean);
+      }
+    }
+  }
+  return [];
 }
 
 async function getFacultyContextByEmail(emailNorm) {
   // Prefer explicit mapping created at faculty signup.
   const mapped = await SocietyFaculty.findOne({ email: emailNorm }).lean().catch(() => null);
   if (mapped) {
-    let logoUrl = "";
-    if (mapped.societyRegistration) {
+    const societyDoc = await Society.findOne({
+      name: (mapped.societyName || "").trim(),
+    })
+      .select("logoUrl category description")
+      .lean()
+      .catch(() => null);
+    let logoUrl = societyDoc?.logoUrl || "";
+    if (!logoUrl && mapped.societyRegistration) {
       const reg = await SocietyRegistration.findById(mapped.societyRegistration).select("logoUrl").lean().catch(() => null);
       logoUrl = reg?.logoUrl || "";
     }
@@ -49,6 +68,8 @@ async function getFacultyContextByEmail(emailNorm) {
       collegeName: mapped.collegeName || "",
       accountType: mapped.accountType || "ADMIN",
       logoUrl,
+      category: societyDoc?.category || "",
+      description: societyDoc?.description || "",
     };
   }
 
@@ -63,6 +84,23 @@ async function getFacultyContextByEmail(emailNorm) {
     };
   }
   return null;
+}
+
+function splitName(fullName = "") {
+  const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { firstName: "", lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") || "-" };
+}
+
+async function resolveRequesterSocietyByUser(userLike) {
+  const emailNorm = (userLike?.email || "").trim().toLowerCase();
+  if (!emailNorm) return null;
+  const mapped = await SocietyFaculty.findOne({ email: emailNorm }).lean().catch(() => null);
+  if (mapped) {
+    const societyByMap = await Society.findOne({ name: (mapped.societyName || "").trim() }).catch(() => null);
+    if (societyByMap) return societyByMap;
+  }
+  return Society.findOne({ email: emailNorm }).catch(() => null);
 }
 
 async function getPreferredDashboardByEmail(emailNorm, accountType) {
@@ -84,18 +122,45 @@ async function getPreferredDashboardByEmail(emailNorm, accountType) {
 async function getCollegeContextByEmail(emailNorm, userLike) {
   const college = await College.findOne({ email: emailNorm })
     .populate("university", "name")
+    .populate("societies.societyId", "name email")
     .lean()
     .catch(() => null);
   if (!college) return null;
 
   const addr = college.address || {};
   const location = [addr.city, addr.state, addr.pincode].filter(Boolean).join(", ");
+  const activeSocieties = Array.isArray(college.societies)
+    ? college.societies
+        .map((s, index) => ({
+          id: String(s?.societyId || s?._id || `${index}`),
+          name: (s?.societyName || s?.societyId?.name || "").trim(),
+          facultyEmail: (s?.societyId?.email || "").trim().toLowerCase(),
+          status: "active",
+        }))
+        .filter((s) => s.name)
+    : [];
+  const pendingIds = Array.isArray(college.societies_signup) ? college.societies_signup.filter(Boolean) : [];
+  const pendingConfigs = await SocietySignupConfig.find({ _id: { $in: pendingIds } })
+    .select("_id societyName facultyEmail")
+    .lean()
+    .catch(() => []);
+  const activeNames = new Set(activeSocieties.map((s) => s.name.toLowerCase()));
+  const pendingSocieties = (pendingConfigs || [])
+    .map((cfg) => ({
+      id: String(cfg?._id || ""),
+      name: (cfg?.societyName || "").trim(),
+      facultyEmail: (cfg?.facultyEmail || "").trim().toLowerCase(),
+      status: "pending",
+    }))
+    .filter((s) => s.name && !activeNames.has(s.name.toLowerCase()));
+  const societies = [...activeSocieties, ...pendingSocieties];
   return {
     collegeName: college.name || "",
     universityName: college.university?.name || "",
     location: location || "",
     adminName: [userLike?.firstName, userLike?.lastName].filter(Boolean).join(" ").trim() || "College Admin",
     adminEmail: emailNorm,
+    societies,
   };
 }
 
@@ -134,8 +199,8 @@ exports.sendOTP = async (req, res) => {
         }
       } else {
         // Fallback: if society-specific config isn't created yet, use global signup config.
-        const config = await SignupConfig.findOne({ department: deptTrim, allowedEmails: emailNorm });
-        if (!config) {
+        const allowedFromCfg = await getAllowedDepartmentsFromGlobalSignupConfig(emailNorm);
+        if (!allowedFromCfg.includes(deptTrim)) {
           return res.status(403).json({
             success: false,
             message: "This email is not allowed to sign up for the selected department.",
@@ -144,8 +209,8 @@ exports.sendOTP = async (req, res) => {
       }
     } else {
       // Fallback: global signup config
-      const config = await SignupConfig.findOne({ department: deptTrim, allowedEmails: emailNorm });
-      if (!config) {
+      const allowedFromCfg = await getAllowedDepartmentsFromGlobalSignupConfig(emailNorm);
+      if (!allowedFromCfg.includes(deptTrim)) {
         return res.status(403).json({
           success: false,
           message: "This email is not allowed to sign up for the selected department.",
@@ -204,6 +269,254 @@ exports.sendOTP = async (req, res) => {
       message: "Something went wrong.",
       error: error.message,
     });
+  }
+};
+
+// ── Public: Colleges & Societies dropdowns (core signup) ──────────────────
+
+exports.listCollegesPublic = async (req, res) => {
+  try {
+    const q = String(req.query?.q || "").trim().toLowerCase();
+    const colleges = await College.find({}, "name").lean().catch(() => []);
+    const names = (colleges || [])
+      .map((c) => (c?.name || "").trim())
+      .filter(Boolean)
+      .filter((name) => (q ? name.toLowerCase().includes(q) : true))
+      .sort((a, b) => a.localeCompare(b));
+    return res.status(200).json({ success: true, data: names });
+  } catch (error) {
+    console.error("listCollegesPublic error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to fetch colleges." });
+  }
+};
+
+exports.listSocietiesByCollegePublic = async (req, res) => {
+  try {
+    const collegeName = String(req.query?.collegeName || "").trim();
+    if (!collegeName) return res.status(400).json({ success: false, message: "collegeName is required." });
+    const college = await College.findOne({ name: collegeName }).populate("societies.societyId", "name").lean();
+    if (!college) return res.status(404).json({ success: false, message: "College not found." });
+    const societies = Array.isArray(college.societies)
+      ? college.societies
+          .map((s, idx) => ({
+            id: String(s?.societyId?._id || s?.societyId || idx),
+            name: (s?.societyName || s?.societyId?.name || "").trim(),
+          }))
+          .filter((s) => s.name)
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : [];
+    return res.status(200).json({ success: true, data: societies });
+  } catch (error) {
+    console.error("listSocietiesByCollegePublic error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to fetch societies." });
+  }
+};
+
+// ── Core signup: resolve → send OTP → verify + auto-login ─────────────────
+
+async function getSocietySignupConfigForSociety(society) {
+  if (!society?.signupconfigs) return null;
+  return SignupConfig.findById(society.signupconfigs).lean().catch(() => null);
+}
+
+exports.resolveCoreSignup = async (req, res) => {
+  try {
+    const collegeName = String(req.body?.collegeName || "").trim();
+    const societyId = String(req.body?.societyId || "").trim();
+    const emailNorm = String(req.body?.email || "").trim().toLowerCase();
+    if (!collegeName || !societyId || !emailNorm) {
+      return res.status(400).json({ success: false, message: "collegeName, societyId and email are required." });
+    }
+
+    const college = await College.findOne({ name: collegeName }).lean();
+    if (!college) return res.status(404).json({ success: false, message: "College not found." });
+
+    const society = await Society.findById(societyId).lean().catch(() => null);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    const belongsToCollege = (college.societies || []).some((s) => String(s?.societyId) === String(society._id));
+    if (!belongsToCollege) {
+      return res.status(403).json({ success: false, message: "Selected society does not belong to selected college." });
+    }
+
+    const cfg = await getSocietySignupConfigForSociety(society);
+    const allowedDepartments = (cfg?.departments || [])
+      .filter((d) => Array.isArray(d.allowedEmails) && d.allowedEmails.includes(emailNorm))
+      .map((d) => (d.department || "").trim())
+      .filter(Boolean);
+    if (!allowedDepartments.length) {
+      return res.status(403).json({ success: false, message: "Email not allowed for this society." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        collegeName,
+        societyId: String(society._id),
+        societyName: society.name,
+        department: allowedDepartments[0],
+        allowedDepartments,
+      },
+    });
+  } catch (error) {
+    console.error("resolveCoreSignup error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to resolve core signup." });
+  }
+};
+
+exports.sendCoreSignupOTP = async (req, res) => {
+  try {
+    const societyId = String(req.body?.societyId || "").trim();
+    const department = String(req.body?.department || "").trim();
+    const emailNorm = String(req.body?.email || "").trim().toLowerCase();
+    if (!societyId || !department || !emailNorm) {
+      return res.status(400).json({ success: false, message: "societyId, department and email are required." });
+    }
+
+    const society = await Society.findById(societyId).lean().catch(() => null);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    const cfg = await getSocietySignupConfigForSociety(society);
+    const dept = (cfg?.departments || []).find((d) => (d.department || "").trim() === department);
+    const allowed = Array.isArray(dept?.allowedEmails) && dept.allowedEmails.includes(emailNorm);
+    if (!allowed) {
+      return res.status(403).json({ success: false, message: "This email is not allowed for the selected position." });
+    }
+
+    const checkUserPresent = await User.findOne({ email: emailNorm }).lean();
+    if (checkUserPresent) {
+      return res.status(409).json({ success: false, message: "User already registered." });
+    }
+
+    await OTP.collection.createIndex({ otp: 1 }, { unique: true }).catch(() => { });
+    const pollToken = crypto.randomBytes(24).toString("hex");
+    let otp;
+    while (true) {
+      try {
+        otp = otpGenerator.generate(6, { upperCaseAlphabets: false, lowerCaseAlphabets: false, specialChars: false });
+        await OTP.create({ email: emailNorm, otp, pollToken });
+        break;
+      } catch (err) {
+        if (err.code === 11000) continue;
+        throw err;
+      }
+    }
+
+    const apiUrl = (process.env.API_URL || `http://localhost:${process.env.PORT || 8080}`).replace(/\/$/, "");
+    const autofillUrl = `${apiUrl}/api/v1/auth/allow-autofill?token=${encodeURIComponent(pollToken)}`;
+    const htmlContent = emailVerificationTemplate(otp, autofillUrl);
+    await mailSender(emailNorm, "SocConnect – Signup OTP", htmlContent);
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent successfully.",
+      pollToken,
+      otp: process.env.NODE_ENV === "development" ? otp : undefined,
+    });
+  } catch (error) {
+    console.error("sendCoreSignupOTP error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to send OTP." });
+  }
+};
+
+exports.verifyCoreOtpAndLogin = async (req, res) => {
+  try {
+    const societyId = String(req.body?.societyId || "").trim();
+    const emailNorm = String(req.body?.email || "").trim().toLowerCase();
+    const otpStr = String(req.body?.otp || "").trim();
+    const fullName = String(req.body?.fullName || "").trim();
+    if (!societyId || !emailNorm || !otpStr || !fullName) {
+      return res.status(400).json({ success: false, message: "societyId, email, otp and fullName are required." });
+    }
+
+    const recentOTP = await OTP.find({ email: emailNorm }).sort({ createdAt: -1 }).limit(1);
+    if (!recentOTP.length || recentOTP[0].otp.toString() !== otpStr) {
+      return res.status(401).json({ success: false, message: "Invalid OTP." });
+    }
+
+    const society = await Society.findById(societyId).lean().catch(() => null);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    const cfg = await getSocietySignupConfigForSociety(society);
+    const allowedDepartments = (cfg?.departments || [])
+      .filter((d) => Array.isArray(d.allowedEmails) && d.allowedEmails.includes(emailNorm))
+      .map((d) => (d.department || "").trim())
+      .filter(Boolean);
+    if (!allowedDepartments.length) {
+      return res.status(403).json({ success: false, message: "Email not allowed for this society." });
+    }
+    const accountType = allowedDepartments[0];
+
+    const existingUser = await User.findOne({ email: emailNorm }).lean();
+    if (existingUser) {
+      return res.status(409).json({ success: false, message: "User already registered." });
+    }
+
+    const { firstName, lastName } = splitName(fullName);
+    const randomPasswordHash = await bcrypt.hash(cryptoRandomPassword(), 10);
+    const profileDetails = await Profile.create({ gender: null, dob: null, about: null, phoneNumber: null });
+    profileDetails.position = accountType;
+    await profileDetails.save();
+
+    const newUser = await User.create({
+      firstName: firstName || "User",
+      lastName: lastName || "-",
+      email: emailNorm,
+      password: randomPasswordHash,
+      contact: "",
+      accountType,
+      society: society._id,
+      additionalDetails: profileDetails._id,
+      image: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(fullName)}`,
+    });
+
+    // Keep society membership arrays in-sync with the position used at signup.
+    const posLower = String(accountType || "").trim().toLowerCase();
+    const isHead = /\b(head|lead|co-?lead)\b/i.test(posLower);
+    const isCore =
+      [
+        "president",
+        "vice president",
+        "vice-president",
+        "general secretary",
+        "general-secretary",
+        "joint secretary",
+        "joint-secretary",
+        "treasurer",
+        "secretary",
+      ].includes(posLower) && !isHead;
+
+    const bucket = isCore ? "core" : isHead ? "heads" : "executives";
+    await Society.updateOne(
+      { _id: society._id },
+      { $addToSet: { [bucket]: newUser._id } }
+    ).catch(() => { });
+
+    const payload = { email: newUser.email, id: newUser._id, accountType: newUser.accountType };
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "1y" });
+
+    const isProduction = process.env.NODE_ENV === "production";
+    res.cookie("Token", token, {
+      expires: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      path: "/",
+    });
+
+    const userObj = newUser.toObject();
+    userObj.token = token;
+    userObj.password = undefined;
+    return res.status(201).json({
+      success: true,
+      message: "Signed up and logged in successfully.",
+      token,
+      user: userObj,
+      resolved: { societyName: society.name, accountType },
+    });
+  } catch (error) {
+    console.error("verifyCoreOtpAndLogin error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to verify OTP." });
   }
 };
 
@@ -305,8 +618,8 @@ exports.signup = async (req, res) => {
           });
         }
       } else {
-        const config = await SignupConfig.findOne({ department: accountType.trim(), allowedEmails: emailNorm });
-        if (!config) {
+        const allowedFromCfg = await getAllowedDepartmentsFromGlobalSignupConfig(emailNorm);
+        if (!allowedFromCfg.includes(accountType.trim())) {
           return res.status(403).json({
             success: false,
             message: "This email is not allowed to sign up for the selected department.",
@@ -314,8 +627,8 @@ exports.signup = async (req, res) => {
         }
       }
     } else {
-      const config = await SignupConfig.findOne({ department: accountType.trim(), allowedEmails: emailNorm });
-      if (!config) {
+      const allowedFromCfg = await getAllowedDepartmentsFromGlobalSignupConfig(emailNorm);
+      if (!allowedFromCfg.includes(accountType.trim())) {
         return res.status(403).json({
           success: false,
           message: "This email is not allowed to sign up for the selected department.",
@@ -362,9 +675,14 @@ exports.signup = async (req, res) => {
     userObj.token = token;
     userObj.password = undefined;
 
-    // If this is a faculty signup coming from an isolated SocietyRegistration,
-    // store a link record with society + college context.
+    // If this is a faculty signup coming from a SocietyRegistration,
+    // store mapping and promote pending config to active society.
     if (societyReg) {
+      const pendingConfig = await SocietySignupConfig.findOne({ societyRegistrationId: societyReg._id })
+        .select("_id departments")
+        .lean()
+        .catch(() => null);
+
       await SocietyFaculty.create({
         societyRegistration: societyReg._id,
         societyName: societyReg.societyName || "",
@@ -374,6 +692,71 @@ exports.signup = async (req, res) => {
         email: emailNorm,
         facultyId: "",
       }).catch(() => { });
+
+      const parentCollege = await College.findOne({ name: societyReg.collegeName.trim() }).catch(() => null);
+      if (parentCollege) {
+        const existingSociety = await Society.findOne({
+          college: parentCollege._id,
+          name: societyReg.societyName.trim(),
+        }).lean().catch(() => null);
+
+        if (!existingSociety) {
+          const seededPassword = await bcrypt.hash(cryptoRandomPassword(), 10);
+          const promoted = await Society.create({
+            name: societyReg.societyName.trim(),
+            address: {
+              state: parentCollege.address?.state || "NA",
+              city: parentCollege.address?.city || "NA",
+              pincode: parentCollege.address?.pincode || "NA",
+              fullAddress: parentCollege.address?.fullAddress || "NA",
+            },
+            logoUrl: societyReg.logoUrl || "",
+            college: parentCollege._id,
+            email: emailNorm,
+            password: seededPassword,
+            verified: true,
+            status: "approved",
+          });
+
+          let signupCfg = null;
+          if (pendingConfig?.departments?.length) {
+            signupCfg = await SignupConfig.create({
+              society: promoted._id,
+              departments: pendingConfig.departments.map((d) => ({
+                department: (d.department || "").trim(),
+                allowedEmails: Array.isArray(d.allowedEmails) ? d.allowedEmails : [],
+              })),
+            }).catch(() => null);
+          } else {
+            signupCfg = await SignupConfig.create({
+              society: promoted._id,
+              departments: [],
+            }).catch(() => null);
+          }
+          if (signupCfg?._id) {
+            promoted.signupconfigs = signupCfg._id;
+            await promoted.save();
+          }
+
+          parentCollege.societies = Array.isArray(parentCollege.societies) ? parentCollege.societies : [];
+          const alreadyLinked = parentCollege.societies.some(
+            (s) => String(s?.societyId) === String(promoted._id) || (s?.societyName || "").trim().toLowerCase() === promoted.name.toLowerCase()
+          );
+          if (!alreadyLinked) {
+            parentCollege.societies.push({ societyId: promoted._id, societyName: promoted.name });
+          }
+        }
+
+        if (pendingConfig?._id) {
+          parentCollege.societies_signup = Array.isArray(parentCollege.societies_signup)
+            ? parentCollege.societies_signup.filter((id) => String(id) !== String(pendingConfig._id))
+            : [];
+        }
+        await parentCollege.save();
+      }
+
+      await SocietySignupConfig.deleteOne({ societyRegistrationId: societyReg._id }).catch(() => { });
+      await SocietyRegistration.deleteOne({ _id: societyReg._id }).catch(() => { });
     }
 
     const isProduction = process.env.NODE_ENV === "production";
@@ -398,6 +781,609 @@ exports.signup = async (req, res) => {
       message: "Error while creating the entry in database.",
       error: error.message,
     });
+  }
+};
+
+exports.createCollegeSociety = async (req, res) => {
+  try {
+    const { societyName, facultyEmail } = req.body || {};
+    const emailNorm = String(facultyEmail || "").trim().toLowerCase();
+    const nameTrim = String(societyName || "").trim();
+    if (!nameTrim || !emailNorm) {
+      return res.status(400).json({ success: false, message: "Society name and faculty email are required." });
+    }
+
+    const college = await College.findOne({ email: (req.user?.email || "").trim().toLowerCase() });
+    if (!college) return res.status(404).json({ success: false, message: "College context not found." });
+
+    const activeExists = (college.societies || []).some(
+      (s) => (s?.societyName || "").trim().toLowerCase() === nameTrim.toLowerCase()
+    );
+    if (activeExists) {
+      return res.status(409).json({ success: false, message: "Society already exists in this college." });
+    }
+
+    const pendingIds = Array.isArray(college.societies_signup) ? college.societies_signup.filter(Boolean) : [];
+    const existingPending = await SocietySignupConfig.findOne({
+      _id: { $in: pendingIds },
+      societyName: nameTrim,
+    }).lean();
+    if (existingPending) {
+      return res.status(409).json({ success: false, message: "Pending society already exists for this college." });
+    }
+
+    const existingUser = await User.findOne({ email: emailNorm }).select("_id").lean();
+    if (existingUser) {
+      return res.status(409).json({ success: false, message: "Faculty email is already registered as a user." });
+    }
+
+    const existingSocietyEmail = await Society.findOne({ email: emailNorm }).select("_id").lean();
+    if (existingSocietyEmail) {
+      return res.status(409).json({ success: false, message: "Faculty email already linked to an active society." });
+    }
+
+    const regPassword = await bcrypt.hash(cryptoRandomPassword(), 10);
+    const registration = await SocietyRegistration.create({
+      societyName: nameTrim,
+      collegeName: college.name,
+      logoUrl: "",
+      email: emailNorm,
+      password: regPassword,
+      verified: true,
+      status: "pending",
+    });
+
+    const createdConfig = await SocietySignupConfig.create({
+      societyRegistrationId: registration._id,
+      societyName: nameTrim,
+      collegeName: college.name,
+      facultyEmail: emailNorm,
+      source: "college-admin",
+      departments: [
+        {
+          department: "ADMIN",
+          allowedEmails: [emailNorm],
+          allowedIds: [],
+          faultyIds: [],
+        },
+      ],
+    });
+
+    college.societies_signup = Array.isArray(college.societies_signup) ? college.societies_signup : [];
+    college.societies_signup.push(createdConfig._id);
+    await college.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Society draft created. It will become active after faculty signup.",
+      data: {
+        id: String(registration._id),
+        name: nameTrim,
+        facultyEmail: emailNorm,
+        status: "pending",
+      },
+    });
+  } catch (error) {
+    console.error("createCollegeSociety error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to create society draft." });
+  }
+};
+
+exports.updateFacultySocietyDetails = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).select("email firstName lastName");
+    if (!user) return res.status(404).json({ success: false, message: "User not found." });
+
+    const emailNorm = (user.email || "").trim().toLowerCase();
+    const mapped = await SocietyFaculty.findOne({ email: emailNorm });
+    if (!mapped) {
+      return res.status(404).json({ success: false, message: "Faculty-society mapping not found." });
+    }
+
+    const incomingSocietyName = String(req.body?.societyName || "").trim();
+    const incomingCategory = String(req.body?.category || "").trim();
+    const incomingDescription = String(req.body?.description || "").trim();
+    const incomingFacultyName = String(req.body?.facultyName || "").trim();
+
+    if (!incomingSocietyName) {
+      return res.status(400).json({ success: false, message: "Society name is required." });
+    }
+    if (!["tech", "non-tech"].includes(incomingCategory)) {
+      return res.status(400).json({ success: false, message: "Valid category is required." });
+    }
+
+    let nextLogoUrl = "";
+    const previousSocietyName = (mapped.societyName || "").trim();
+    const existingSoc = await Society.findOne({
+      name: previousSocietyName,
+      college: { $exists: true },
+    }).select("logoUrl").lean().catch(() => null);
+    nextLogoUrl = existingSoc?.logoUrl || "";
+
+    if (req.files?.logo) {
+      const upload = await imageUpload(req.files.logo, "soc-connect-logos");
+      nextLogoUrl = upload?.secure_url || nextLogoUrl;
+    }
+
+    const college = await College.findOne({ name: (mapped.collegeName || "").trim() });
+    if (!college) return res.status(404).json({ success: false, message: "College not found for this society." });
+
+    let societyDoc = await Society.findOne({
+      college: college._id,
+      name: previousSocietyName,
+    });
+    if (!societyDoc) {
+      return res.status(404).json({ success: false, message: "Active society not found." });
+    }
+
+    societyDoc.name = incomingSocietyName;
+    societyDoc.category = incomingCategory;
+    societyDoc.description = incomingDescription;
+    if (nextLogoUrl) societyDoc.logoUrl = nextLogoUrl;
+    await societyDoc.save();
+
+    mapped.societyName = incomingSocietyName;
+    await mapped.save();
+
+    if (incomingFacultyName) {
+      const { firstName, lastName } = splitName(incomingFacultyName);
+      if (firstName) user.firstName = firstName;
+      if (lastName) user.lastName = lastName;
+      await user.save();
+    }
+
+    college.societies = Array.isArray(college.societies) ? college.societies : [];
+    college.societies = college.societies.map((s) => {
+      if (
+        String(s?.societyId) === String(societyDoc._id) ||
+        (s?.societyName || "").trim().toLowerCase() === previousSocietyName.toLowerCase()
+      ) {
+        return { ...s, societyName: incomingSocietyName, societyId: societyDoc._id };
+      }
+      return s;
+    });
+    await college.save();
+
+    const freshCtx = await getFacultyContextByEmail(emailNorm);
+    return res.status(200).json({
+      success: true,
+      message: "Society details updated successfully.",
+      data: {
+        facultyName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+        context: freshCtx,
+      },
+    });
+  } catch (error) {
+    console.error("updateFacultySocietyDetails error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to update society details." });
+  }
+};
+
+exports.getFacultyCoreMembers = async (req, res) => {
+  try {
+    const CORE_POSITION_CANON = new Set([
+      "president",
+      "vice president",
+      "vice-president",
+      "general secretary",
+      "general-secretary",
+      "joint secretary",
+      "joint-secretary",
+      "treasurer",
+      "secretary",
+    ]);
+    const isHeadLike = (pos) => /\b(head|lead|co-?lead)\b/i.test(String(pos || "").trim());
+    const isCoreLike = (pos) => {
+      const v = String(pos || "").trim().toLowerCase();
+      if (!v) return false;
+      if (isHeadLike(v)) return false;
+      return CORE_POSITION_CANON.has(v);
+    };
+
+    const user = await User.findById(req.user.id).select("email").lean();
+    const society = await resolveRequesterSocietyByUser(user);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+    const positionsAll = Array.isArray(society.positions) ? society.positions.map((p) => String(p || "").trim()).filter(Boolean) : [];
+    const positions = positionsAll.filter((p) => isCoreLike(p));
+    const cfg = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs).lean().catch(() => null) : null;
+    const byDept = new Map((cfg?.departments || []).map((d) => [(d.department || "").trim(), d.allowedEmails || []]));
+    const rows = positions.map((position) => ({
+      id: position,
+      position,
+      email: (byDept.get(position) || [])[0] || "",
+    }));
+    return res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error("getFacultyCoreMembers error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to fetch core members." });
+  }
+};
+
+exports.addFacultyCoreMember = async (req, res) => {
+  try {
+    const CORE_POSITION_CANON = new Set([
+      "president",
+      "vice president",
+      "vice-president",
+      "general secretary",
+      "general-secretary",
+      "joint secretary",
+      "joint-secretary",
+      "treasurer",
+      "secretary",
+    ]);
+    const isHeadLike = (pos) => /\b(head|lead|co-?lead)\b/i.test(String(pos || "").trim());
+    const isCoreLike = (pos) => {
+      const v = String(pos || "").trim().toLowerCase();
+      if (!v) return false;
+      if (isHeadLike(v)) return false;
+      return CORE_POSITION_CANON.has(v);
+    };
+
+    const { position, email } = req.body || {};
+    const pos = String(position || "").trim();
+    const emailNorm = String(email || "").trim().toLowerCase();
+    if (!pos || !emailNorm) {
+      return res.status(400).json({ success: false, message: "Position and email are required." });
+    }
+    if (!isCoreLike(pos)) {
+      return res.status(400).json({
+        success: false,
+        message: "This section is only for core positions (President, Vice President, General Secretary, etc.). Please add leads/heads in the Head Members section.",
+      });
+    }
+    const user = await User.findById(req.user.id).select("email").lean();
+    const society = await resolveRequesterSocietyByUser(user);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    society.positions = Array.isArray(society.positions) ? society.positions.map((p) => String(p || "").trim()).filter(Boolean) : [];
+    const duplicate = society.positions.some((p) => p.toLowerCase() === pos.toLowerCase());
+    if (duplicate) return res.status(409).json({ success: false, message: "This core member already exists." });
+    society.positions.push(pos);
+    await society.save();
+
+    let cfg = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs) : null;
+    if (!cfg) {
+      cfg = await SignupConfig.create({ society: society._id, departments: [] });
+      society.signupconfigs = cfg._id;
+      await society.save();
+    }
+    let dept = cfg.departments.find((d) => (d.department || "").trim() === pos);
+    if (!dept) {
+      cfg.departments.push({ department: pos, allowedEmails: [emailNorm] });
+    } else if (!dept.allowedEmails.includes(emailNorm)) {
+      dept.allowedEmails.push(emailNorm);
+    }
+    await cfg.save();
+
+    const refreshed = await SignupConfig.findById(cfg._id).lean().catch(() => null);
+    const rows = (society.positions || []).map((position) => ({
+      id: position,
+      position,
+      email: ((refreshed?.departments || []).find((d) => (d.department || "").trim() === position)?.allowedEmails || [])[0] || "",
+    }));
+    return res.status(201).json({
+      success: true,
+      message: "Core member added.",
+      data: rows.filter((r) => isCoreLike(r.position)),
+    });
+  } catch (error) {
+    console.error("addFacultyCoreMember error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to add core member." });
+  }
+};
+
+exports.updateFacultyCoreMember = async (req, res) => {
+  try {
+    const CORE_POSITION_CANON = new Set([
+      "president",
+      "vice president",
+      "vice-president",
+      "general secretary",
+      "general-secretary",
+      "joint secretary",
+      "joint-secretary",
+      "treasurer",
+      "secretary",
+    ]);
+    const isHeadLike = (pos) => /\b(head|lead|co-?lead)\b/i.test(String(pos || "").trim());
+    const isCoreLike = (pos) => {
+      const v = String(pos || "").trim().toLowerCase();
+      if (!v) return false;
+      if (isHeadLike(v)) return false;
+      return CORE_POSITION_CANON.has(v);
+    };
+
+    const { id } = req.params;
+    const { position, email } = req.body || {};
+    const pos = String(position || "").trim();
+    const emailNorm = String(email || "").trim().toLowerCase();
+    if (!id || !pos || !emailNorm) {
+      return res.status(400).json({ success: false, message: "Id, position and email are required." });
+    }
+    if (!isCoreLike(pos)) {
+      return res.status(400).json({
+        success: false,
+        message: "This section is only for core positions (President, Vice President, General Secretary, etc.). Please add leads/heads in the Head Members section.",
+      });
+    }
+    const user = await User.findById(req.user.id).select("email").lean();
+    const society = await resolveRequesterSocietyByUser(user);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    const oldPos = String(id || "").trim();
+    const hasOld = (society.positions || []).some((p) => String(p || "").trim() === oldPos);
+    if (!hasOld) return res.status(404).json({ success: false, message: "Core member not found." });
+    society.positions = (society.positions || []).map((p) => {
+      const v = String(p || "").trim();
+      return v === oldPos ? pos : v;
+    });
+    await society.save();
+
+    const cfg = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs) : null;
+    if (cfg) {
+      const oldDept = cfg.departments.find((d) => (d.department || "").trim() === oldPos);
+      const oldEmail = (oldDept?.allowedEmails || [])[0] || "";
+      if (oldDept) oldDept.allowedEmails = (oldDept.allowedEmails || []).filter((e) => e !== oldEmail);
+      let newDept = cfg.departments.find((d) => (d.department || "").trim() === pos);
+      if (!newDept) {
+        cfg.departments.push({ department: pos, allowedEmails: [emailNorm] });
+      } else if (!newDept.allowedEmails.includes(emailNorm)) {
+        newDept.allowedEmails.push(emailNorm);
+      }
+      await cfg.save();
+    }
+
+    const refreshed = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs).lean().catch(() => null) : null;
+    const rows = (society.positions || []).map((positionItem) => ({
+      id: positionItem,
+      position: positionItem,
+      email: ((refreshed?.departments || []).find((d) => (d.department || "").trim() === positionItem)?.allowedEmails || [])[0] || "",
+    }));
+    return res.status(200).json({
+      success: true,
+      message: "Core member updated.",
+      data: rows.filter((r) => isCoreLike(r.position)),
+    });
+  } catch (error) {
+    console.error("updateFacultyCoreMember error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to update core member." });
+  }
+};
+
+exports.deleteFacultyCoreMember = async (req, res) => {
+  try {
+    const CORE_POSITION_CANON = new Set([
+      "president",
+      "vice president",
+      "vice-president",
+      "general secretary",
+      "general-secretary",
+      "joint secretary",
+      "joint-secretary",
+      "treasurer",
+      "secretary",
+    ]);
+    const isHeadLike = (pos) => /\b(head|lead|co-?lead)\b/i.test(String(pos || "").trim());
+    const isCoreLike = (pos) => {
+      const v = String(pos || "").trim().toLowerCase();
+      if (!v) return false;
+      if (isHeadLike(v)) return false;
+      return CORE_POSITION_CANON.has(v);
+    };
+
+    const { id } = req.params;
+    const user = await User.findById(req.user.id).select("email").lean();
+    const society = await resolveRequesterSocietyByUser(user);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    const oldPos = String(id || "").trim();
+    const exists = (society.positions || []).some((p) => String(p || "").trim() === oldPos);
+    if (!exists) return res.status(404).json({ success: false, message: "Core member not found." });
+    society.positions = (society.positions || []).map((p) => String(p || "").trim()).filter((p) => p && p !== oldPos);
+    await society.save();
+
+    const cfg = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs) : null;
+    if (cfg) {
+      const oldDept = cfg.departments.find((d) => (d.department || "").trim() === oldPos);
+      if (oldDept) {
+        const oldEmail = (oldDept.allowedEmails || [])[0] || "";
+        oldDept.allowedEmails = (oldDept.allowedEmails || []).filter((e) => e !== oldEmail);
+      }
+      await cfg.save();
+    }
+
+    const refreshed = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs).lean().catch(() => null) : null;
+    const rows = (society.positions || []).map((positionItem) => ({
+      id: positionItem,
+      position: positionItem,
+      email: ((refreshed?.departments || []).find((d) => (d.department || "").trim() === positionItem)?.allowedEmails || [])[0] || "",
+    }));
+    return res.status(200).json({
+      success: true,
+      message: "Core member removed.",
+      data: rows.filter((r) => isCoreLike(r.position)),
+    });
+  } catch (error) {
+    console.error("deleteFacultyCoreMember error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to delete core member." });
+  }
+};
+
+exports.getFacultyHeadMembers = async (req, res) => {
+  try {
+    const isHeadLike = (pos) => /\b(head|lead|co-?lead)\b/i.test(String(pos || "").trim());
+    const user = await User.findById(req.user.id).select("email").lean();
+    const society = await resolveRequesterSocietyByUser(user);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+    const positionsAll = Array.isArray(society.positions) ? society.positions.map((p) => String(p || "").trim()).filter(Boolean) : [];
+    const positions = positionsAll.filter((p) => isHeadLike(p));
+    const cfg = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs).lean().catch(() => null) : null;
+    const byDept = new Map((cfg?.departments || []).map((d) => [(d.department || "").trim(), d.allowedEmails || []]));
+    const rows = positions.map((position) => ({
+      id: position,
+      position,
+      email: (byDept.get(position) || [])[0] || "",
+    }));
+    return res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error("getFacultyHeadMembers error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to fetch head members." });
+  }
+};
+
+exports.addFacultyHeadMember = async (req, res) => {
+  try {
+    const isHeadLike = (pos) => /\b(head|lead|co-?lead)\b/i.test(String(pos || "").trim());
+    const { position, email } = req.body || {};
+    const pos = String(position || "").trim();
+    const emailNorm = String(email || "").trim().toLowerCase();
+    if (!pos || !emailNorm) {
+      return res.status(400).json({ success: false, message: "Position and email are required." });
+    }
+    if (!isHeadLike(pos)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Head Members must contain "Lead" or "Head" in the position (e.g., "Technical Lead").',
+      });
+    }
+    const user = await User.findById(req.user.id).select("email").lean();
+    const society = await resolveRequesterSocietyByUser(user);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    society.positions = Array.isArray(society.positions) ? society.positions.map((p) => String(p || "").trim()).filter(Boolean) : [];
+    const duplicate = society.positions.some((p) => p.toLowerCase() === pos.toLowerCase());
+    if (duplicate) return res.status(409).json({ success: false, message: "This head member already exists." });
+    society.positions.push(pos);
+    await society.save();
+
+    let cfg = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs) : null;
+    if (!cfg) {
+      cfg = await SignupConfig.create({ society: society._id, departments: [] });
+      society.signupconfigs = cfg._id;
+      await society.save();
+    }
+    let dept = cfg.departments.find((d) => (d.department || "").trim() === pos);
+    if (!dept) {
+      cfg.departments.push({ department: pos, allowedEmails: [emailNorm] });
+    } else if (!dept.allowedEmails.includes(emailNorm)) {
+      dept.allowedEmails.push(emailNorm);
+    }
+    await cfg.save();
+
+    const refreshed = await SignupConfig.findById(cfg._id).lean().catch(() => null);
+    const rowsAll = (society.positions || []).map((position) => ({
+      id: position,
+      position,
+      email: ((refreshed?.departments || []).find((d) => (d.department || "").trim() === position)?.allowedEmails || [])[0] || "",
+    }));
+    return res.status(201).json({
+      success: true,
+      message: "Head member added.",
+      data: rowsAll.filter((r) => isHeadLike(r.position)),
+    });
+  } catch (error) {
+    console.error("addFacultyHeadMember error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to add head member." });
+  }
+};
+
+exports.updateFacultyHeadMember = async (req, res) => {
+  try {
+    const isHeadLike = (pos) => /\b(head|lead|co-?lead)\b/i.test(String(pos || "").trim());
+    const { id } = req.params;
+    const { position, email } = req.body || {};
+    const pos = String(position || "").trim();
+    const emailNorm = String(email || "").trim().toLowerCase();
+    if (!id || !pos || !emailNorm) {
+      return res.status(400).json({ success: false, message: "Id, position and email are required." });
+    }
+    if (!isHeadLike(pos)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Head Members must contain "Lead" or "Head" in the position (e.g., "Technical Lead").',
+      });
+    }
+    const user = await User.findById(req.user.id).select("email").lean();
+    const society = await resolveRequesterSocietyByUser(user);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    const oldPos = String(id || "").trim();
+    const hasOld = (society.positions || []).some((p) => String(p || "").trim() === oldPos);
+    if (!hasOld) return res.status(404).json({ success: false, message: "Head member not found." });
+    society.positions = (society.positions || []).map((p) => {
+      const v = String(p || "").trim();
+      return v === oldPos ? pos : v;
+    });
+    await society.save();
+
+    const cfg = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs) : null;
+    if (cfg) {
+      const oldDept = cfg.departments.find((d) => (d.department || "").trim() === oldPos);
+      const oldEmail = (oldDept?.allowedEmails || [])[0] || "";
+      if (oldDept) oldDept.allowedEmails = (oldDept.allowedEmails || []).filter((e) => e !== oldEmail);
+      let newDept = cfg.departments.find((d) => (d.department || "").trim() === pos);
+      if (!newDept) {
+        cfg.departments.push({ department: pos, allowedEmails: [emailNorm] });
+      } else if (!newDept.allowedEmails.includes(emailNorm)) {
+        newDept.allowedEmails.push(emailNorm);
+      }
+      await cfg.save();
+    }
+
+    const refreshed = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs).lean().catch(() => null) : null;
+    const rowsAll = (society.positions || []).map((positionItem) => ({
+      id: positionItem,
+      position: positionItem,
+      email: ((refreshed?.departments || []).find((d) => (d.department || "").trim() === positionItem)?.allowedEmails || [])[0] || "",
+    }));
+    return res.status(200).json({
+      success: true,
+      message: "Head member updated.",
+      data: rowsAll.filter((r) => isHeadLike(r.position)),
+    });
+  } catch (error) {
+    console.error("updateFacultyHeadMember error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to update head member." });
+  }
+};
+
+exports.deleteFacultyHeadMember = async (req, res) => {
+  try {
+    const isHeadLike = (pos) => /\b(head|lead|co-?lead)\b/i.test(String(pos || "").trim());
+    const { id } = req.params;
+    const user = await User.findById(req.user.id).select("email").lean();
+    const society = await resolveRequesterSocietyByUser(user);
+    if (!society) return res.status(404).json({ success: false, message: "Society not found." });
+
+    const oldPos = String(id || "").trim();
+    const exists = (society.positions || []).some((p) => String(p || "").trim() === oldPos);
+    if (!exists) return res.status(404).json({ success: false, message: "Head member not found." });
+    society.positions = (society.positions || []).map((p) => String(p || "").trim()).filter((p) => p && p !== oldPos);
+    await society.save();
+
+    const cfg = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs) : null;
+    if (cfg) {
+      const oldDept = cfg.departments.find((d) => (d.department || "").trim() === oldPos);
+      if (oldDept) oldDept.allowedEmails = [];
+      await cfg.save();
+    }
+
+    const refreshed = society.signupconfigs ? await SignupConfig.findById(society.signupconfigs).lean().catch(() => null) : null;
+    const rowsAll = (society.positions || []).map((positionItem) => ({
+      id: positionItem,
+      position: positionItem,
+      email: ((refreshed?.departments || []).find((d) => (d.department || "").trim() === positionItem)?.allowedEmails || [])[0] || "",
+    }));
+    return res.status(200).json({
+      success: true,
+      message: "Head member removed.",
+      data: rowsAll.filter((r) => isHeadLike(r.position)),
+    });
+  } catch (error) {
+    console.error("deleteFacultyHeadMember error:", error);
+    return res.status(500).json({ success: false, message: error.message || "Failed to delete head member." });
   }
 };
 

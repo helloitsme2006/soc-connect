@@ -13,6 +13,11 @@ import {
   signup as authSignup,
   resolveFacultyByEmail,
   verifySignupOTP,
+  listCollegesPublic,
+  listCollegeSocietiesPublic,
+  resolveCoreSignup,
+  sendCoreSignupOTP,
+  verifyCoreOtpAndLogin,
 } from "../services/api";
 import {
   sendRegistrationOTP,
@@ -44,6 +49,12 @@ const Signup = () => {
   const [facultyCollegeName, setFacultyCollegeName] = useState("");
   const [facultyAllowedDepartments, setFacultyAllowedDepartments] = useState([]);
   const [facultySelectedDepartment, setFacultySelectedDepartment] = useState("");
+  // Core signup flow: college → society → resolve department → OTP → auto-login
+  const [coreCollegeName, setCoreCollegeName] = useState("");
+  const [coreSocieties, setCoreSocieties] = useState([]);
+  const [coreSocietyId, setCoreSocietyId] = useState("");
+  const [coreResolvedDepartment, setCoreResolvedDepartment] = useState("");
+  const [coreResolveDone, setCoreResolveDone] = useState(false);
 
   const [name, setName] = useState("");
   const [societyName, setSocietyName] = useState("");
@@ -121,6 +132,45 @@ const Signup = () => {
       return;
     }
 
+    // Core flow: college + society first, then resolve department via SignupConfig and send OTP
+    if (selectedRole === "core") {
+      if (!coreCollegeName.trim()) {
+        toast.error("Please select a college.");
+        return;
+      }
+      if (!coreSocietyId) {
+        toast.error("Please select a society.");
+        return;
+      }
+      if (!email.trim() || !email.includes("@")) {
+        toast.error("Please enter a valid email address.");
+        return;
+      }
+      setOtpLoading(true);
+      try {
+        const resolved = await resolveCoreSignup({
+          collegeName: coreCollegeName.trim(),
+          societyId: coreSocietyId,
+          email: email.trim(),
+        });
+        setCoreResolvedDepartment(resolved.department || "");
+        setCoreResolveDone(true);
+        await sendCoreSignupOTP({
+          societyId: coreSocietyId,
+          department: resolved.department,
+          email: email.trim(),
+        });
+        toast.success("OTP sent to your email!");
+        setOtpSent(true);
+        startCooldown();
+      } catch (err) {
+        toast.error(err.message || "Failed to send OTP.");
+      } finally {
+        setOtpLoading(false);
+      }
+      return;
+    }
+
     setOtpLoading(true);
     try {
       await sendRegistrationOTP({ email: email.trim(), role: selectedRole });
@@ -144,10 +194,20 @@ const Signup = () => {
     try {
       if (selectedRole === "faculty") {
         await verifySignupOTP({ email: email.trim(), otp: otpDigits });
+      } else if (selectedRole === "core") {
+        const res = await verifyCoreOtpAndLogin({
+          societyId: coreSocietyId,
+          email: email.trim(),
+          otp: otpDigits,
+          fullName: name.trim(),
+        });
+        if (res?.user) setUser(res.user);
+        toast.success("Logged in successfully!");
+        navigate(res?.user?.preferredDashboard || "/", { replace: true });
       } else {
         await verifyRegistrationOTP({ email: email.trim(), otp: otpDigits, role: selectedRole });
       }
-      toast.success("Email verified successfully!");
+      if (selectedRole !== "core") toast.success("Email verified successfully!");
       setOtpVerified(true);
     } catch (err) {
       toast.error(err.message || "Invalid or expired OTP.");
@@ -167,6 +227,10 @@ const Signup = () => {
 
   const handleSignupSubmit = async (e) => {
     e.preventDefault();
+    if (selectedRole === "core") {
+      toast.error("Use OTP verification to login.");
+      return;
+    }
     if (!otpVerified) {
       toast.error("You must verify your email with OTP before proceeding.");
       return;
@@ -386,6 +450,69 @@ const Signup = () => {
               </div>
             )}
 
+            {/* Core: college + society selection */}
+            {selectedRole === "core" && (
+              <>
+                <SearchableDropdown
+                  id="collegeSelect"
+                  label="College"
+                  placeholder="Search colleges..."
+                  required
+                  value={coreCollegeName}
+                  onChange={async (v) => {
+                    setCoreCollegeName(v);
+                    setCoreSocietyId("");
+                    setCoreResolvedDepartment("");
+                    setCoreResolveDone(false);
+                    if (!String(v || "").trim()) {
+                      setCoreSocieties([]);
+                      return;
+                    }
+                    try {
+                      const list = await listCollegeSocietiesPublic(v);
+                      setCoreSocieties(Array.isArray(list) ? list : []);
+                    } catch {
+                      setCoreSocieties([]);
+                    }
+                  }}
+                  fetchOptions={listCollegesPublic}
+                  fetchOnEmpty={true}
+                  minChars={0}
+                />
+
+                <div>
+                  <label className={labelClass}>Society *</label>
+                  <select
+                    value={coreSocietyId}
+                    onChange={(e) => {
+                      setCoreSocietyId(e.target.value);
+                      setCoreResolvedDepartment("");
+                      setCoreResolveDone(false);
+                    }}
+                    disabled={!coreCollegeName.trim() || coreSocieties.length === 0}
+                    className={inputClass}
+                  >
+                    <option value="" disabled>
+                      {coreCollegeName.trim() ? "Select society" : "Select college first"}
+                    </option>
+                    {coreSocieties.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {coreResolveDone && coreResolvedDepartment && (
+                  <div className="rounded-xl border border-gray-600/30 bg-[#252536] p-4">
+                    <p className="text-sm text-gray-300">
+                      Position/Department: <span className="text-white">{coreResolvedDepartment}</span>
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
             {/* DYNAMIC MIDDLE FIELDS */}
             {selectedRole === "faculty" && (
               <div>
@@ -399,7 +526,7 @@ const Signup = () => {
               </div>
             )}
 
-            {(selectedRole === "core" || selectedRole === "head" || selectedRole === "executive") && (
+            {(selectedRole === "head" || selectedRole === "executive") && (
               <SearchableDropdown
                 id="societySearch"
                 label="Society Name"
@@ -410,19 +537,6 @@ const Signup = () => {
                 fetchOptions={searchDatabaseSocieties}
                 fetchOnEmpty={true}
               />
-            )}
-
-            {selectedRole === "core" && (
-              <div>
-                <label className={labelClass}>Position *</label>
-                <input
-                  type="text"
-                  value={position}
-                  onChange={(e) => setPosition(e.target.value)}
-                  className={inputClass}
-                  placeholder="e.g. Technical Lead"
-                />
-              </div>
             )}
 
             {(selectedRole === "head" || selectedRole === "executive") && (
@@ -439,7 +553,7 @@ const Signup = () => {
             )}
 
             {/* SHARED PASSWORD FIELDS */}
-            {(selectedRole !== "faculty" || otpVerified) && (
+            {((selectedRole !== "faculty" && selectedRole !== "core") || otpVerified) && (
               <>
                 <div>
                   <label className={labelClass}>Create Password *</label>
