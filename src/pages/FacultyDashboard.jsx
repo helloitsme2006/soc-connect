@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Link, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -14,28 +14,6 @@ import {
   updateFacultyHeadMember,
   deleteFacultyHeadMember,
 } from "../services/api";
-import {
-  Building2,
-  User,
-  Mail,
-  Plus,
-  Pencil,
-  Trash2,
-  LayoutDashboard,
-  Users,
-  Settings,
-  ChevronDown,
-  LogOut,
-  UserCircle,
-  School,
-  FileText,
-  Upload,
-  Image as ImageIcon,
-  Tag,
-  Briefcase,
-  Users as UsersIcon,
-  CheckCircle2
-} from "lucide-react";
 
 const DEFAULT_CORE_POSITION_OPTIONS = [
   "President",
@@ -65,191 +43,109 @@ const DEFAULT_HEAD_POSITION_OPTIONS = [
   "Operations Head",
 ];
 
-/* ─── Animation Variants ──────────────────────────────────────────────── */
-const staggerContainer = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.08 } },
-};
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { type: "spring", damping: 24, stiffness: 260 } },
-};
-
-/* ─── Reusable Components ─────────────────────────────────────────────── */
-function GlassCard({ children, className = "", ...props }) {
+function MIcon({ name, className = "", filled = false }) {
   return (
-    <motion.div
-      variants={fadeUp}
-      className={`rounded-2xl border border-white/[0.07] bg-gradient-to-br from-[#1e1e2f]/90 to-[#27253a]/90 backdrop-blur-md shadow-[0_4px_24px_rgba(0,0,0,0.18)] ${className}`}
-      {...props}
+    <span
+      className={`material-symbols-outlined select-none ${className}`}
+      style={filled ? { fontVariationSettings: "'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24" } : undefined}
     >
-      {children}
-    </motion.div>
+      {name}
+    </span>
   );
 }
 
-function InputField({ label, icon: Icon, required, ...props }) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      {label && (
-        <label className="text-xs font-medium text-gray-400 tracking-wide pl-0.5">
-          {label} {required && <span className="text-red-400">*</span>}
-        </label>
-      )}
-      <div className="relative group">
-        {Icon && (
-          <Icon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-cyan-400 transition-colors" />
-        )}
-        <input
-          className={`w-full ${Icon ? "pl-10" : "pl-4"} pr-4 py-3 rounded-xl bg-[#252536] border border-white/[0.08] text-white placeholder-gray-500 text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200`}
-          {...props}
-        />
-      </div>
-    </div>
-  );
+function headRowIcon(position) {
+  const p = position.toLowerCase();
+  if (p.includes("technical") || p.includes("dev")) return "code";
+  if (p.includes("event")) return "celebration";
+  if (p.includes("market") || p.includes("pr") || p.includes("outreach")) return "campaign";
+  if (p.includes("design")) return "palette";
+  if (p.includes("content")) return "article";
+  return "groups";
 }
 
-function DetailItem({ icon: Icon, label, value }) {
-  return (
-    <div className="flex items-start gap-3 p-4 rounded-xl bg-white/[0.03] border border-white/[0.05] group hover:bg-white/[0.05] transition-colors duration-200">
-      <div className="p-2.5 rounded-lg bg-cyan-500/10 text-cyan-400 shrink-0">
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-widest text-gray-500 font-medium">{label}</p>
-        <p className="text-white font-medium mt-0.5 truncate">{value}</p>
-      </div>
-    </div>
-  );
+function fieldClass(disabled) {
+  return `w-full rounded-xl border border-[#484847]/80 bg-[#131313] px-4 py-3 text-sm text-white placeholder-[#767575] outline-none transition focus:border-[#89acff]/50 ${
+    disabled ? "opacity-60 cursor-not-allowed" : ""
+  }`;
 }
 
-/* ─── Dashboard Navbar ────────────────────────────────────────────────── */
-function DashboardNav({ facultyName, societyName }) {
-  const [profileOpen, setProfileOpen] = useState(false);
-  const menuItems = [
-    { label: "Dashboard", icon: LayoutDashboard, active: true },
-    { label: "Society Details", icon: FileText },
-    { label: "Members", icon: Users },
-    { label: "Settings", icon: Settings },
-  ];
-
-  const initials = facultyName
-    .split(" ")
-    .filter(Boolean)
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "FA";
+/** Core role card — no decorative icons on the role header (per product request). */
+function CoreLeadershipCard({ position, member, isExtra, compact, onAssign, onEdit, onRemove }) {
+  const filled = Boolean(member?.email);
+  const pad = compact ? "p-3" : "p-4 sm:p-5";
+  const ring = isExtra ? "border-[#cb7bff]/25" : filled ? "border-[#89acff]/30" : "border-[#484847]/15";
+  const bg = isExtra
+    ? "bg-gradient-to-br from-[#1a1919] to-[#cb7bff]/[0.07]"
+    : filled
+      ? "bg-gradient-to-br from-[#1a1919] to-[#89acff]/[0.06]"
+      : "bg-[#1a1919]";
+  const titleCls = isExtra ? "text-[#cb7bff]" : "text-[#adaaaa]";
+  const av = compact ? "w-9 h-9 min-w-[2.25rem] text-xs" : "w-11 h-11 min-w-[2.75rem] text-sm";
+  const borderAv = isExtra ? "border-[#cb7bff] text-[#cb7bff]" : "border-[#89acff] text-[#89acff]";
+  const titleSize = compact ? "text-[9px] tracking-[0.12em]" : "text-[10px] tracking-[0.15em]";
 
   return (
-    <motion.nav
-      initial={{ y: -30, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ type: "spring", damping: 28, stiffness: 260 }}
-      className="sticky top-0 z-50 flex items-center justify-between px-5 sm:px-8 h-16 rounded-2xl mx-3 sm:mx-6 mt-3 border border-white/[0.08]"
-      style={{
-        background: "rgba(30, 30, 47, 0.82)",
-        backdropFilter: "blur(24px)",
-        WebkitBackdropFilter: "blur(24px)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)",
-      }}
-    >
-      {/* Logo */}
-      <div className="flex items-center gap-2.5">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-cyan-500/20">
-          <School className="h-5 w-5" />
-        </div>
-        <span className="text-base font-semibold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent hidden sm:inline truncate max-w-[200px]">
-          {societyName}
-        </span>
-      </div>
-
-      {/* Menu Items — center */}
-      <div className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
-        {menuItems.map((item) => (
-          <button
-            key={item.label}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-              item.active
-                ? "bg-white/[0.08] text-white shadow-inner"
-                : "text-gray-400 hover:text-white hover:bg-white/[0.04]"
-            }`}
+    <div className={`rounded-xl border transition-colors ${pad} ${ring} ${bg} ${!filled && !isExtra ? "hover:border-[#89acff]/35" : ""}`}>
+      <h4 className={`${titleCls} uppercase font-black ${titleSize} mb-2 sm:mb-3 leading-tight`}>{position}</h4>
+      {filled ? (
+        <div className={`flex items-center gap-2 ${compact ? "" : "gap-3"}`}>
+          <div
+            className={`rounded-full bg-[#262626] border-2 flex items-center justify-center font-bold ${av} ${borderAv}`}
           >
-            <item.icon className="h-4 w-4" />
-            <span>{item.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* Right — profile */}
-      <div className="flex items-center gap-3">
-        <button className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/[0.06] transition-colors md:hidden">
-          <LayoutDashboard className="h-5 w-5" />
+            {(member.email || "?")[0].toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className={`font-bold text-white truncate ${compact ? "text-[11px]" : "text-sm"}`}>{member.email}</p>
+            <p className={`text-[#adaaaa] truncate ${compact ? "text-[9px]" : "text-xs"}`}>
+              {isExtra ? "Additional role" : "Configured"}
+            </p>
+          </div>
+          <div className={`flex shrink-0 ${compact ? "gap-0.5" : "gap-1"}`}>
+            <button
+              type="button"
+              onClick={() => onEdit(member)}
+              className={`rounded-full hover:bg-[#2c2c2c] text-[#adaaaa] hover:text-white transition-colors ${compact ? "p-1.5" : "p-2"}`}
+              title="Edit"
+            >
+              <MIcon name="edit" className={compact ? "text-base" : "text-lg"} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onRemove(member.id)}
+              className={`rounded-full hover:bg-[#a70138]/15 text-[#ff6e84] transition-colors ${compact ? "p-1.5" : "p-2"}`}
+              title="Remove"
+            >
+              <MIcon name="delete" className={compact ? "text-base" : "text-lg"} />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => onAssign(position)}
+          className="w-full flex items-center gap-2 text-left group rounded-lg hover:bg-white/[0.03] -m-1 p-1 transition-colors"
+        >
+          <div
+            className={`rounded-full bg-[#262626] border-2 border-dashed border-[#484847] flex items-center justify-center group-hover:border-[#739eff] transition-colors shrink-0 ${av}`}
+          >
+            <MIcon name="add" className="text-[#adaaaa] text-lg" />
+          </div>
+          <div className="min-w-0">
+            <p className={`text-[#adaaaa] ${compact ? "text-[11px]" : "text-sm"}`}>Assign</p>
+            <p className={`text-[#767575] italic ${compact ? "text-[9px]" : "text-xs"}`}>No email yet</p>
+          </div>
         </button>
-
-        {/* Profile dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setProfileOpen((p) => !p)}
-            className="flex items-center gap-2 p-1 pr-2 rounded-xl hover:bg-white/[0.06] transition-colors"
-          >
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shadow-md shadow-cyan-500/20">
-              {initials}
-            </div>
-            <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-200 ${profileOpen ? "rotate-180" : ""}`} />
-          </button>
-
-          <AnimatePresence>
-            {profileOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-                <motion.div
-                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-12 w-52 rounded-xl border border-white/[0.08] bg-[#1e1e2f]/95 backdrop-blur-xl shadow-2xl overflow-hidden z-50"
-                >
-                  <div className="px-4 py-3 border-b border-white/[0.06]">
-                    <p className="text-sm font-medium text-white truncate">{facultyName}</p>
-                    <p className="text-xs text-gray-500">Faculty Coordinator</p>
-                  </div>
-                  <div className="py-1">
-                    {[
-                      { label: "Profile", icon: UserCircle },
-                      { label: "Settings", icon: Settings },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors"
-                      >
-                        <item.icon className="h-4 w-4" />
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="border-t border-white/[0.06] py-1">
-                    <button className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors">
-                      <LogOut className="h-4 w-4" />
-                      Sign out
-                    </button>
-                  </div>
-                </motion.div>
-              </>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-    </motion.nav>
+      )}
+    </div>
   );
 }
 
-/* ═════════════════════════════════════════════════════════════════════════
-   MAIN PAGE
-   ═════════════════════════════════════════════════════════════════════ */
 export default function FacultyDashboard() {
   const { user, setUser } = useAuth();
+  const location = useLocation();
+  const societyFormRef = useRef(null);
+
   const [facultyContext, setFacultyContext] = useState({
     societyName: user?.facultyContext?.societyName || "",
     collegeName: user?.facultyContext?.collegeName || "",
@@ -259,7 +155,6 @@ export default function FacultyDashboard() {
   });
   const [contextLoading, setContextLoading] = useState(false);
 
-  // Editable Society Details State
   const [facultyName, setFacultyName] = useState(
     [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Faculty Incharge"
   );
@@ -273,7 +168,6 @@ export default function FacultyDashboard() {
   const [isSavingDetails, setIsSavingDetails] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Core Members State
   const [coreMembers, setCoreMembers] = useState([]);
   const [coreLoading, setCoreLoading] = useState(false);
   const [memberPosition, setMemberPosition] = useState("");
@@ -282,7 +176,6 @@ export default function FacultyDashboard() {
   const [memberEmail, setMemberEmail] = useState("");
   const [editingMemberId, setEditingMemberId] = useState(null);
 
-  // Head Members State (department-dependent leads/heads)
   const [headMembers, setHeadMembers] = useState([]);
   const [headLoading, setHeadLoading] = useState(false);
   const [headPosition, setHeadPosition] = useState("");
@@ -290,13 +183,13 @@ export default function FacultyDashboard() {
   const [showHeadPositionDropdown, setShowHeadPositionDropdown] = useState(false);
   const [headEmail, setHeadEmail] = useState("");
   const [editingHeadMemberId, setEditingHeadMemberId] = useState(null);
+  const [coreModalOpen, setCoreModalOpen] = useState(false);
 
   const societyName = facultyContext.societyName || "—";
   const collegeName = facultyContext.collegeName || "—";
   const facultyEmail = user?.email || "—";
 
   useEffect(() => {
-    // Pre-fill existing uploaded society logo so user is not forced to upload again.
     if (!logoPreview && facultyContext.logoUrl) {
       setLogoPreview(facultyContext.logoUrl);
     }
@@ -324,7 +217,7 @@ export default function FacultyDashboard() {
           });
         }
       } catch {
-        // Keep fallback from user.facultyContext if request fails.
+        /* keep fallback */
       } finally {
         if (!cancelled) setContextLoading(false);
       }
@@ -391,7 +284,6 @@ export default function FacultyDashboard() {
     };
   }, []);
 
-  /* ─── Handlers ──────────────────────────────────────────────────────── */
   const handleLogoUpload = (file) => {
     if (file) {
       if (!file.type.startsWith("image/")) {
@@ -527,6 +419,7 @@ export default function FacultyDashboard() {
     setPositionQuery(member.position);
     setMemberEmail(member.email);
     setEditingMemberId(member.id);
+    document.getElementById("core-assign-form")?.scrollIntoView({ behavior: "smooth" });
   };
 
   const handleRemoveMember = async (id) => {
@@ -605,6 +498,7 @@ export default function FacultyDashboard() {
     setHeadPositionQuery(member.position);
     setHeadEmail(member.email);
     setEditingHeadMemberId(member.id);
+    document.getElementById("head-assign-form")?.scrollIntoView({ behavior: "smooth" });
   };
 
   const handleRemoveHeadMember = async (id) => {
@@ -659,7 +553,7 @@ export default function FacultyDashboard() {
   };
 
   const categoryDisplayLabel =
-    category === "tech" ? "Tech" : category === "non-tech" ? "Non-Tech" : "—";
+    category === "tech" ? "Technical" : category === "non-tech" ? "Non-technical" : "—";
 
   const handleToggleEditDetails = () => {
     if (isEditingDetails) {
@@ -671,597 +565,704 @@ export default function FacultyDashboard() {
     }
   };
 
-  /* ─── Render ────────────────────────────────────────────────────────── */
+  const assignCoreSlot = (position) => {
+    setMemberPosition(position);
+    setPositionQuery(position);
+    setMemberEmail("");
+    setEditingMemberId(null);
+    document.getElementById("core-assign-form")?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const coreSlots = DEFAULT_CORE_POSITION_OPTIONS.map((position) => ({
+    position,
+    member: coreMembers.find((m) => m.position.toLowerCase() === position.toLowerCase()),
+  }));
+
+  const extraCoreMembers = coreMembers.filter(
+    (m) => !DEFAULT_CORE_POSITION_OPTIONS.some((p) => p.toLowerCase() === m.position.toLowerCase())
+  );
+
+  /** Cards only for roles that already have an email — empty slots stay off the strip. */
+  const assignedCoreCardItems = [
+    ...coreSlots
+      .filter(({ member }) => Boolean(member?.email))
+      .map(({ position, member }) => ({
+        key: `slot-${position}`,
+        position,
+        member,
+        isExtra: false,
+      })),
+    ...extraCoreMembers
+      .filter((m) => Boolean(m?.email))
+      .map((member) => ({
+        key: member.id,
+        position: member.position,
+        member,
+        isExtra: true,
+      })),
+  ];
+
+  const navLink = (to, icon, label) => {
+    const active = location.pathname === to;
+    return (
+      <Link
+        to={to}
+        className={`flex items-center gap-3 px-4 py-3 rounded-xl text-[#adaaaa] hover:bg-[#201f1f] hover:text-white transition-all duration-200 ${
+          active ? "bg-[#89acff]/10 text-[#89acff] border-r-4 border-[#89acff] rounded-l-xl rounded-r-none font-bold" : ""
+        }`}
+      >
+        <MIcon name={icon} className={active ? "text-[#89acff]" : ""} filled={active} />
+        <span>{label}</span>
+      </Link>
+    );
+  };
+
+  const handleFabClick = () => {
+    if (isEditingDetails) {
+      societyFormRef.current?.requestSubmit();
+    } else {
+      setIsEditingDetails(true);
+      document.getElementById("society-identity")?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  const displaySocietyName = (societyNameInput || facultyContext.societyName || "").trim() || "Your society";
+  const subtitle =
+    (description || facultyContext.description || "").trim().slice(0, 120) ||
+    "Configure identity, core leadership, and department heads.";
+
   return (
-    <div className="min-h-screen bg-[#14141f] text-white">
-      {/* Subtle bg texture */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-48 -right-48 w-[600px] h-[600px] rounded-full bg-cyan-500/[0.04] blur-[120px]" />
-        <div className="absolute top-1/2 -left-48 w-[500px] h-[500px] rounded-full bg-indigo-500/[0.03] blur-[120px]" />
-      </div>
+    <div className="min-h-screen bg-[#0e0e0e] text-white font-manrope antialiased selection:bg-[#89acff]/30">
+      <aside className="hidden md:flex fixed left-0 top-[5.25rem] bottom-0 w-64 z-40 flex-col py-8 bg-[#131313] font-faculty text-sm border-r border-[#262626]/80">
+        <div className="px-6 mb-8 flex items-center gap-3">
+          <div className="w-10 h-10 bg-[#739eff] rounded-lg flex items-center justify-center">
+            <MIcon name="dataset" className="text-[#002053] text-[22px] leading-none" filled />
+          </div>
+          <div>
+            <h2 className="text-base font-extrabold text-white leading-tight tracking-tight">SocConnect</h2>
+            <p className="text-[10px] uppercase tracking-widest text-[#adaaaa] mt-0.5">Faculty console</p>
+          </div>
+        </div>
+        <nav className="flex-1 px-3 space-y-1">
+          {navLink("/faculty-dashboard", "dashboard", "Society setup")}
+          {navLink("/", "home", "Home")}
+          {navLink("/manage-society", "group", "Members")}
+          {navLink("/events", "calendar_month", "Events")}
+          {navLink("/uploadevent/upload", "upload", "Upload event")}
+        </nav>
+        <div className="px-3 mt-auto">
+          <Link
+            to="/profile"
+            className="flex items-center gap-3 px-4 py-3 text-[#adaaaa] hover:bg-[#201f1f] hover:text-white rounded-xl transition-all"
+          >
+            <MIcon name="person" />
+            <span>Profile</span>
+          </Link>
+        </div>
+      </aside>
 
-      {/* Navbar handled by main App Navbar */}
-
-      <main className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-20">
-        {/* Page title */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-            Welcome,{" "}
-            <span className="bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">
-              {facultyName || "Faculty"}
-            </span>
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">Complete your society setup and manage core members.</p>
-        </motion.div>
-
-        <motion.div variants={staggerContainer} initial="hidden" animate="visible" className="space-y-8">
-          
-          {/* ───────────── SOCIETY OVERVIEW (READ ONLY) ───────────── */}
-          <GlassCard className="p-6 sm:p-8 border-l-4 border-l-cyan-500/50">
-            <h2 className="text-lg font-semibold flex items-center gap-2 mb-6">
-              <School className="h-5 w-5 text-cyan-400" />
-              Society Overview
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <DetailItem icon={UsersIcon} label="Assigned Society" value={societyName} />
-              <DetailItem icon={Building2} label="College Name" value={collegeName} />
-              <DetailItem icon={Mail} label="Faculty Email (Contact)" value={facultyEmail} />
+      <div className="md:ml-64 min-h-screen bg-[#0e0e0e]">
+        <header className="sticky top-[4.75rem] z-30 bg-[#0e0e0e]/95 backdrop-blur-md border-b border-[#484847]/20">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 h-14 flex items-center justify-between gap-4 font-faculty">
+            <div className="flex items-center gap-3 min-w-0">
+              <h1 className="text-lg sm:text-xl font-bold tracking-tight text-[#89acff] truncate">Society setup</h1>
+              <span className="hidden sm:inline h-6 w-px bg-[#484847]/40" />
+              <p className="hidden sm:block text-xs text-[#adaaaa] truncate">
+                {contextLoading ? "Syncing…" : societyName}
+              </p>
             </div>
-            <p className="text-xs text-gray-500 mt-4 flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500/70" />
-              {contextLoading
-                ? "Loading faculty context..."
-                : "These details are fetched from your registered faculty/society mapping."}
-            </p>
-          </GlassCard>
+            <button
+              type="button"
+              onClick={handleToggleEditDetails}
+              className="shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl border border-[#484847]/60 text-xs font-bold text-white hover:bg-[#2c2c2c] transition-colors active:scale-[0.98]"
+            >
+              <MIcon name={isEditingDetails ? "close" : "edit"} className="text-base" />
+              {isEditingDetails ? "Cancel edit" : "Edit identity"}
+            </button>
+          </div>
+        </header>
 
-          <div className="space-y-8">
-            {/* ───────────── SOCIETY DETAILS FORM ───────────── */}
-            <GlassCard className="p-6 sm:p-8 flex flex-col">
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-indigo-400" />
-                  {isEditingDetails ? "Edit society details" : "Society Details"}
-                </h2>
-                <button
-                  type="button"
-                  onClick={handleToggleEditDetails}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-white/[0.12] text-gray-300 hover:text-white hover:bg-white/[0.06] transition-colors flex items-center gap-1.5"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  {isEditingDetails ? "Cancel" : "Edit"}
-                </button>
+        <div className="p-4 sm:p-6 lg:p-10 max-w-7xl mx-auto space-y-10 pb-32">
+          {/* Society identity */}
+          <section id="society-identity" className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+                <div>
+                  <h2 className="font-faculty text-2xl sm:text-3xl font-bold tracking-tight text-white" style={{ letterSpacing: "-0.02em" }}>
+                    Society identity
+                  </h2>
+                  <p className="text-[#adaaaa] text-sm mt-1">{subtitle}</p>
+                </div>
+                <span className="self-start px-4 py-1.5 bg-[#3fff8b]/15 text-[#b5ffc2] text-xs font-bold rounded-full uppercase tracking-widest border border-[#3fff8b]/20">
+                  Active
+                </span>
               </div>
-              {!isEditingDetails ? (
-                <p className="text-sm text-gray-500 mb-6">
-                  Your saved society profile. Click Edit to update logo, name, category, or description.
-                </p>
-              ) : (
-                <p className="text-sm text-gray-400 mb-6 font-medium">
-                  Update the fields below and save when you are done.
-                </p>
-              )}
 
               {!isEditingDetails ? (
-                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#252536]/80 to-[#1a1a28]/80 overflow-hidden">
-                  <div className="h-1.5 bg-gradient-to-r from-cyan-500/70 via-indigo-500/60 to-violet-500/50" />
-                  <div className="p-5 sm:p-6">
-                    <div className="flex flex-col sm:flex-row gap-6 sm:items-start">
-                      <div className="shrink-0 mx-auto sm:mx-0">
-                        <div className="h-28 w-28 sm:h-32 sm:w-32 rounded-2xl border border-white/10 bg-[#1e1e2f] overflow-hidden shadow-lg shadow-black/30 ring-1 ring-white/5">
-                          {logoPreview || facultyContext.logoUrl ? (
-                            <img
-                              src={logoPreview || facultyContext.logoUrl}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
+                <div className="bg-[#1a1919] rounded-2xl p-6 sm:p-8 border border-[#484847]/15 relative overflow-hidden group">
+                  <div className="absolute -right-12 -top-12 w-64 h-64 bg-[#89acff]/5 rounded-full blur-3xl group-hover:bg-[#89acff]/10 transition-colors duration-500 pointer-events-none" />
+                  <div className="relative z-10 flex flex-col md:flex-row gap-8 items-start">
+                    <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-[#201f1f] border border-[#484847]/50 flex items-center justify-center overflow-hidden shrink-0">
+                      {logoPreview || facultyContext.logoUrl ? (
+                        <img src={logoPreview || facultyContext.logoUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <MIcon name="apartment" className="text-5xl text-[#89acff]" filled />
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-4 min-w-0">
+                      <div>
+                        <h3 className="font-faculty text-3xl sm:text-4xl font-extrabold text-white">{displaySocietyName}</h3>
+                        <p className="text-[#739eff] font-medium mt-1 text-sm">{collegeName}</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="bg-black/40 p-4 rounded-xl border border-[#484847]/15">
+                          <p className="text-xs text-[#adaaaa] uppercase tracking-wider mb-1">Affiliation</p>
+                          <p className="text-sm font-semibold">{collegeName}</p>
+                        </div>
+                        <div className="bg-black/40 p-4 rounded-xl border border-[#484847]/15">
+                          <p className="text-xs text-[#adaaaa] uppercase tracking-wider mb-1">Category</p>
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#89acff]/15 text-[#739eff] text-xs font-bold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#89acff]" />
+                            {categoryDisplayLabel}
+                          </span>
+                        </div>
+                      </div>
+                      {(description || facultyContext.description || "").trim() ? (
+                        <p className="text-sm text-[#adaaaa] leading-relaxed whitespace-pre-wrap">
+                          {(description || facultyContext.description).trim()}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <form
+                  ref={societyFormRef}
+                  onSubmit={handleSaveSocietyDetails}
+                  className="bg-[#1a1919] rounded-2xl p-6 sm:p-8 border border-[#484847]/15 space-y-5"
+                >
+                  <div>
+                    <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Society name</label>
+                    <input
+                      className={`mt-1 ${fieldClass(false)}`}
+                      value={societyNameInput}
+                      onChange={(e) => setSocietyNameInput(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Logo</label>
+                      <div
+                        className={`mt-1 flex items-center gap-3 rounded-xl border p-3 transition-colors ${
+                          isDragOver ? "border-[#89acff] bg-[#89acff]/5" : "border-[#484847]/40 bg-[#131313]"
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDragOver(true);
+                        }}
+                        onDragLeave={() => setIsDragOver(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDragOver(false);
+                          handleLogoUpload(e.dataTransfer.files?.[0]);
+                        }}
+                      >
+                        <div className="w-16 h-16 rounded-lg bg-[#201f1f] border border-[#484847]/50 overflow-hidden shrink-0 relative group">
+                          {logoPreview ? (
+                            <>
+                              <img src={logoPreview} alt="" className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={clearLogo}
+                                className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-xs font-bold"
+                              >
+                                Remove
+                              </button>
+                            </>
                           ) : (
-                            <div className="h-full w-full flex items-center justify-center">
-                              <ImageIcon className="h-10 w-10 text-gray-600" />
+                            <div className="w-full h-full flex items-center justify-center text-[#767575]">
+                              <MIcon name="image" />
                             </div>
                           )}
                         </div>
-                      </div>
-                      <div className="min-w-0 flex-1 text-center sm:text-left space-y-4">
                         <div>
-                          <p className="text-[11px] uppercase tracking-widest text-gray-500 font-medium mb-1">Society</p>
-                          <h3 className="text-xl sm:text-2xl font-semibold text-white tracking-tight">
-                            {(societyNameInput || facultyContext.societyName || "—").trim() || "—"}
-                          </h3>
-                          <div className="mt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                category === "tech"
-                                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/25"
-                                  : category === "non-tech"
-                                    ? "bg-amber-500/15 text-amber-200 border-amber-500/25"
-                                    : "bg-white/5 text-gray-400 border-white/10"
-                              }`}
-                            >
-                              <Tag className="h-3 w-3 mr-1 opacity-80" />
-                              {categoryDisplayLabel}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] px-4 py-3 text-left">
-                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">Faculty name</p>
-                            <p className="text-sm font-medium text-white truncate">{facultyName || "—"}</p>
-                          </div>
-                          <div className="rounded-xl bg-white/[0.04] border border-white/[0.06] px-4 py-3 text-left">
-                            <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-0.5">Contact email</p>
-                            <p className="text-sm font-medium text-cyan-200/90 truncate">{facultyEmail}</p>
-                          </div>
-                        </div>
-                        <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] px-4 py-3 text-left">
-                          <p className="text-[10px] uppercase tracking-wider text-gray-500 mb-1.5">Description</p>
-                          <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
-                            {(description || facultyContext.description || "").trim()
-                              ? (description || facultyContext.description).trim()
-                              : "No description added yet."}
-                          </p>
+                          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e.target.files?.[0])} />
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-4 py-2 rounded-lg text-xs font-bold border border-[#89acff]/40 text-[#89acff] hover:bg-[#89acff]/10 transition-colors"
+                          >
+                            Choose file
+                          </button>
+                          <p className="text-[10px] text-[#767575] mt-1">Or drop an image here</p>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              ) : (
-              <form onSubmit={handleSaveSocietyDetails} className="space-y-5 flex-1">
-                <InputField
-                  label="Society Name"
-                  icon={School}
-                  value={societyNameInput}
-                  onChange={(e) => setSocietyNameInput(e.target.value)}
-                  disabled={!isEditingDetails}
-                  required
-                />
-                
-                {/* File Upload / Category row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-gray-400 tracking-wide pl-0.5">
-                      Society Logo <span className="text-red-400">*</span>
-                    </label>
-                    <div
-                      className={`flex items-center gap-3 rounded-xl p-2 border transition-colors ${
-                        isEditingDetails
-                          ? isDragOver
-                            ? "border-cyan-500/60 bg-cyan-500/10"
-                            : "border-white/[0.08] bg-[#252536]/40"
-                          : "border-white/[0.05] bg-[#252536]/20"
-                      }`}
-                      onDragOver={(e) => {
-                        if (!isEditingDetails) return;
-                        e.preventDefault();
-                        setIsDragOver(true);
-                      }}
-                      onDragLeave={() => setIsDragOver(false)}
-                      onDrop={(e) => {
-                        if (!isEditingDetails) return;
-                        e.preventDefault();
-                        setIsDragOver(false);
-                        handleLogoUpload(e.dataTransfer.files?.[0]);
-                      }}
-                    >
-                      <div className="h-16 w-16 rounded-xl bg-[#252536] border border-white/[0.08] flex items-center justify-center overflow-hidden shrink-0 relative group">
-                        {logoPreview ? (
-                          <>
-                            <img src={logoPreview} alt="Logo preview" className="h-full w-full object-cover" />
-                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button type="button" onClick={clearLogo} className="p-1 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/40">
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </>
-                        ) : (
-                          <ImageIcon className="h-6 w-6 text-gray-500" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          ref={fileInputRef}
-                          onChange={(e) => handleLogoUpload(e.target.files?.[0])}
-                        />
-                        <button
-                          type="button"
-                          disabled={!isEditingDetails}
-                          onClick={() => fileInputRef.current?.click()}
-                          className="px-4 py-2 rounded-lg text-xs font-medium border border-cyan-500/30 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
-                        >
-                          <Upload className="h-3.5 w-3.5" />
-                          {isDragOver ? "Drop Image" : "Choose Image"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-gray-400 tracking-wide pl-0.5">
-                      Category <span className="text-red-400">*</span>
-                    </label>
-                    <div className="relative group">
-                      <Tag className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-cyan-400 transition-colors pointer-events-none" />
+                    <div>
+                      <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Category</label>
                       <select
+                        className={`mt-1 ${fieldClass(false)} appearance-none`}
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
-                        disabled={!isEditingDetails}
-                        className={`w-full pl-10 pr-10 py-3 rounded-xl bg-[#252536] border border-white/[0.08] ${category ? "text-white" : "text-gray-500"} text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200 appearance-none`}
+                        required
                       >
-                        <option value="" disabled>Select Tech / Non-Tech</option>
+                        <option value="">Select</option>
                         <option value="tech">Tech</option>
-                        <option value="non-tech">Non-Tech</option>
+                        <option value="non-tech">Non-tech</option>
                       </select>
-                      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
                     </div>
                   </div>
-                </div>
-
-                <InputField
-                  label="Faculty Name"
-                  icon={User}
-                  placeholder="Update your displayed name..."
-                  value={facultyName}
-                  onChange={(e) => setFacultyName(e.target.value)}
-                  disabled={!isEditingDetails}
-                  required
-                />
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-gray-400 tracking-wide pl-0.5">
-                    Society Description <span className="text-gray-600">(Optional)</span>
-                  </label>
-                  <textarea
-                    rows={4}
-                    placeholder="Briefly describe what this society does..."
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    disabled={!isEditingDetails}
-                    className="w-full p-4 rounded-xl bg-[#252536] border border-white/[0.08] text-white placeholder-gray-500 text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200 resize-none custom-scrollbar"
-                  />
-                </div>
-
-                <div className="pt-2">
+                  <div>
+                    <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Faculty name</label>
+                    <input
+                      className={`mt-1 ${fieldClass(false)}`}
+                      value={facultyName}
+                      onChange={(e) => setFacultyName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Description</label>
+                    <textarea
+                      className={`mt-1 ${fieldClass(false)} resize-none min-h-[100px]`}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={4}
+                    />
+                  </div>
                   <button
                     type="submit"
-                    disabled={!isEditingDetails || isSavingDetails}
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 text-white font-semibold text-sm shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/30 hover:brightness-110 active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
+                    disabled={isSavingDetails}
+                    className="w-full py-3.5 rounded-xl bg-[#89acff] text-[#002b6a] font-bold text-sm hover:bg-[#739eff] disabled:opacity-60 flex items-center justify-center gap-2 transition-colors"
                   >
                     {isSavingDetails ? (
                       <>
-                        <span className="h-4.5 w-4.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Saving...
+                        <span className="h-4 w-4 border-2 border-[#002b6a]/30 border-t-[#002b6a] rounded-full animate-spin" />
+                        Saving…
                       </>
                     ) : (
                       <>
-                        <CheckCircle2 className="h-4.5 w-4.5" />
-                        Save Details
+                        <MIcon name="save" />
+                        Save identity
                       </>
                     )}
                   </button>
-                </div>
-              </form>
+                </form>
               )}
-            </GlassCard>
+            </div>
 
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-              {/* ───────────── CORE MEMBERS ───────────── */}
-              <GlassCard className="p-6 sm:p-8 flex flex-col h-[650px] xl:h-auto">
-              <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
-                <Briefcase className="h-5 w-5 text-emerald-400" />
-                Core Members
-              </h2>
-              <p className="text-sm text-gray-400 mb-6 font-medium">
-                Assign department-independent positions (e.g., President, Vice President) below.
+            <div className="bg-[#131313] rounded-2xl p-6 border border-[#484847]/15 flex flex-col h-fit">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-full bg-[#cb7bff]/15 flex items-center justify-center">
+                  <MIcon name="school" className="text-[#cb7bff]" />
+                </div>
+                <h3 className="font-faculty font-bold text-lg">Faculty in-charge</h3>
+              </div>
+              <div className="space-y-4 flex-1">
+                <div className="p-4 bg-[#262626]/40 rounded-xl border border-[#484847]/10">
+                  <p className="text-xs text-[#adaaaa] mb-1">Official email</p>
+                  <p className="text-sm font-medium break-all">{facultyEmail}</p>
+                </div>
+                <div className="p-4 bg-[#262626]/40 rounded-xl border border-[#484847]/10">
+                  <p className="text-xs text-[#adaaaa] mb-1">Display name</p>
+                  <p className="text-sm font-medium">{facultyName || "—"}</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-[#767575] mt-4 leading-relaxed">
+                {contextLoading ? "Refreshing context…" : "Details stay in sync with your faculty registration."}
               </p>
+            </div>
+          </section>
 
-              {/* Dynamic Add Form */}
-              <form onSubmit={handleAddMember} className="space-y-4 mb-6">
-                <div className="relative">
-                  <div className="relative group">
-                    <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-cyan-400 transition-colors" />
-                    <input
-                      type="text"
-                      placeholder="Select or type position"
-                      value={positionQuery}
-                      onFocus={() => setShowPositionDropdown(true)}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setPositionQuery(value);
-                        setMemberPosition(value);
-                        setShowPositionDropdown(true);
-                      }}
-                      className="w-full pl-10 pr-10 py-3 rounded-xl bg-[#252536] border border-white/[0.08] text-white placeholder-gray-500 text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200"
-                    />
-                    <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
-                  </div>
-                  {showPositionDropdown && (
+          {/* Core leadership — one bordered panel; form left, assigned roles right (one card per row) */}
+          <section className="space-y-6">
+            <div className="rounded-2xl border border-[#484847]/35 bg-[#131313] overflow-hidden">
+              <div className="px-5 sm:px-8 pt-6 sm:pt-8 pb-5 border-b border-[#484847]/25">
+                <h2 className="font-faculty text-2xl sm:text-3xl font-bold text-white" style={{ letterSpacing: "-0.02em" }}>
+                  Core leadership
+                </h2>
+                <p className="text-[#adaaaa] text-sm mt-1">
+                  Manage assignments on the left; assigned roles are listed on the right.
+                </p>
+              </div>
+
+              <div className="flex flex-col lg:flex-row lg:items-stretch">
+                <div
+                  id="core-assign-form"
+                  className="w-full lg:w-[42%] lg:max-w-md xl:max-w-lg shrink-0 p-5 sm:p-8 lg:border-r border-[#484847]/25 bg-[#1a1919]/50"
+                >
+                  <h3 className="font-faculty font-bold text-lg mb-1 flex items-center gap-2 text-white">
+                    <MIcon name="person_add" className="text-[#89acff]" />
+                    {editingMemberId ? "Update core assignment" : "Add core assignment"}
+                  </h3>
+                  <p className="text-xs text-[#adaaaa] mb-4">Position must match a core role. Email must be allowed for signup.</p>
+                  <form onSubmit={handleAddMember} className="grid grid-cols-1 gap-4">
+                    <div className="relative">
+                      <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Position</label>
+                      <input
+                        className={`mt-1 ${fieldClass(false)}`}
+                        placeholder="Search or type…"
+                        value={positionQuery}
+                        onFocus={() => setShowPositionDropdown(true)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setPositionQuery(v);
+                          setMemberPosition(v);
+                          setShowPositionDropdown(true);
+                        }}
+                      />
+                      {showPositionDropdown && (
+                        <>
+                          <div className="fixed inset-0 z-20" onClick={() => setShowPositionDropdown(false)} />
+                          <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto rounded-xl border border-[#484847]/40 bg-[#131313] shadow-xl custom-scrollbar">
+                            {filteredPositions.map((position) => (
+                              <button
+                                key={position}
+                                type="button"
+                                className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#201f1f] text-white"
+                                onClick={() => {
+                                  setMemberPosition(position);
+                                  setPositionQuery(position);
+                                  setShowPositionDropdown(false);
+                                }}
+                              >
+                                {position}
+                              </button>
+                            ))}
+                            {positionQuery.trim() &&
+                              !availablePositionOptions.some((p) => p.toLowerCase() === positionQuery.trim().toLowerCase()) && (
+                                <button
+                                  type="button"
+                                  className="w-full text-left px-4 py-2.5 text-sm border-t border-[#484847]/30 text-[#89acff] hover:bg-[#201f1f]"
+                                  onClick={() => {
+                                    const c = positionQuery.trim();
+                                    setMemberPosition(c);
+                                    setPositionQuery(c);
+                                    setShowPositionDropdown(false);
+                                  }}
+                                >
+                                  Use &quot;{positionQuery.trim()}&quot;
+                                </button>
+                              )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Email</label>
+                      <input
+                        type="email"
+                        className={`mt-1 ${fieldClass(false)}`}
+                        placeholder="member@college.edu"
+                        value={memberEmail}
+                        onChange={(e) => setMemberEmail(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="submit"
+                        className="flex-1 min-w-[140px] py-3 rounded-xl bg-[#89acff] text-[#002b6a] font-bold text-sm hover:bg-[#739eff] transition-colors flex items-center justify-center gap-2"
+                      >
+                        <MIcon name="check_circle" />
+                        {editingMemberId ? "Update" : "Save assignment"}
+                      </button>
+                      {editingMemberId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingMemberId(null);
+                            setMemberPosition("");
+                            setPositionQuery("");
+                            setMemberEmail("");
+                          }}
+                          className="px-6 py-3 rounded-xl border border-[#484847] text-sm font-bold hover:bg-[#2c2c2c] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </div>
+
+                <div className="flex-1 min-w-0 p-5 sm:p-8 space-y-4">
+                  {coreLoading ? (
+                    <p className="text-sm text-[#adaaaa]">Loading core roles…</p>
+                  ) : assignedCoreCardItems.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-[#484847]/40 bg-[#1a1919]/40 px-4 py-10 text-center">
+                      <p className="text-sm text-[#adaaaa]">No core roles assigned yet.</p>
+                      <p className="text-xs text-[#767575] mt-2">Add a position and email using the form on the left.</p>
+                    </div>
+                  ) : (
                     <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowPositionDropdown(false)} />
-                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-white/[0.12] bg-[#1f1f31] shadow-2xl overflow-hidden">
-                        <div className="max-h-48 overflow-y-auto custom-scrollbar py-1">
-                          {filteredPositions.map((position) => (
-                            <button
-                              key={position}
-                              type="button"
-                              onClick={() => {
-                                setMemberPosition(position);
-                                setPositionQuery(position);
-                                setShowPositionDropdown(false);
-                              }}
-                              className="w-full text-left px-3.5 py-2 text-sm text-gray-200 hover:bg-white/[0.06] transition-colors"
-                            >
-                              {position}
-                            </button>
-                          ))}
-                          {positionQuery.trim() && !availablePositionOptions.some((p) => p.toLowerCase() === positionQuery.trim().toLowerCase()) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const custom = positionQuery.trim();
-                                setMemberPosition(custom);
-                                setPositionQuery(custom);
-                                setShowPositionDropdown(false);
-                              }}
-                              className="w-full text-left px-3.5 py-2 text-sm text-cyan-300 hover:bg-cyan-500/10 transition-colors border-t border-white/[0.08]"
-                            >
-                              Add custom: "{positionQuery.trim()}"
-                            </button>
-                          )}
-                          {!filteredPositions.length && !positionQuery.trim() && (
-                            <div className="px-3.5 py-2 text-xs text-gray-500">No positions available</div>
-                          )}
-                        </div>
+                      <div className="flex flex-col gap-3">
+                        {assignedCoreCardItems.slice(0, 3).map((item) => (
+                          <CoreLeadershipCard
+                            key={item.key}
+                            position={item.position}
+                            member={item.member}
+                            isExtra={item.isExtra}
+                            compact={false}
+                            onAssign={assignCoreSlot}
+                            onEdit={handleEditMember}
+                            onRemove={handleRemoveMember}
+                          />
+                        ))}
                       </div>
+                      {assignedCoreCardItems.length > 3 && (
+                        <button
+                          type="button"
+                          onClick={() => setCoreModalOpen(true)}
+                          className="text-sm font-bold text-[#89acff] hover:text-[#739eff] underline-offset-2 hover:underline"
+                        >
+                          View all ({assignedCoreCardItems.length})
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
-                <InputField
-                  icon={Mail}
-                  type="email"
-                  placeholder="Member Email ID"
-                  value={memberEmail}
-                  onChange={(e) => setMemberEmail(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-medium text-sm hover:bg-emerald-500/20 hover:border-emerald-500/50 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  {editingMemberId ? "Update Member" : "Add Member"}
-                </button>
-                {editingMemberId && (
+              </div>
+            </div>
+          </section>
+
+          {coreModalOpen && (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="core-modal-title"
+              onClick={() => setCoreModalOpen(false)}
+            >
+              <div
+                className="w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl border border-[#484847]/40 bg-[#131313] shadow-2xl flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-[#484847]/30 shrink-0">
+                  <h3 id="core-modal-title" className="font-faculty font-bold text-lg text-white">
+                    All assigned core roles ({assignedCoreCardItems.length})
+                  </h3>
                   <button
                     type="button"
-                    onClick={() => {
-                      setEditingMemberId(null);
-                      setMemberPosition("");
-                      setPositionQuery("");
-                      setMemberEmail("");
-                    }}
-                    className="w-full text-xs text-gray-400 hover:text-white transition-colors mt-1"
+                    onClick={() => setCoreModalOpen(false)}
+                    className="p-2 rounded-xl text-[#adaaaa] hover:bg-[#2c2c2c] hover:text-white transition-colors"
+                    aria-label="Close"
                   >
-                    Cancel Editing
+                    <MIcon name="close" className="text-xl" />
                   </button>
-                )}
-              </form>
-
-              {/* Added Members List */}
-              <div className="flex-1 flex flex-col min-h-0 bg-[#252536]/50 rounded-xl border border-white/[0.05] p-2">
-                <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-white/[0.05] mb-2 flex justify-between">
-                  <span>Assigned ({coreMembers.length})</span>
                 </div>
-                
-                {coreMembers.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-                    <UsersIcon className="h-10 w-10 text-gray-600 mb-3" />
-                    <p className="text-gray-400 font-medium text-sm">{coreLoading ? "Loading members..." : "No members added yet"}</p>
-                    <p className="text-gray-500 text-xs mt-1 max-w-[200px]">Use the form above to add core executives.</p>
+                <div className="overflow-y-auto p-5 custom-scrollbar">
+                  <div className="flex flex-col gap-3">
+                    {assignedCoreCardItems.map((item) => (
+                      <CoreLeadershipCard
+                        key={item.key}
+                        position={item.position}
+                        member={item.member}
+                        isExtra={item.isExtra}
+                        compact={false}
+                        onAssign={(pos) => {
+                          assignCoreSlot(pos);
+                          setCoreModalOpen(false);
+                        }}
+                        onEdit={(m) => {
+                          handleEditMember(m);
+                          setCoreModalOpen(false);
+                        }}
+                        onRemove={handleRemoveMember}
+                      />
+                    ))}
                   </div>
-                ) : (
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                    <AnimatePresence>
-                      {coreMembers.map((member) => (
-                        <motion.div
-                          key={member.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95, height: 0, margin: 0 }}
-                          className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/[0.04] hover:border-white/[0.1] transition-colors group"
-                        >
-                          <div className="min-w-0 pr-3">
-                            <p className="text-sm font-medium text-white truncate">{member.position}</p>
-                            <p className="text-xs text-gray-400 mt-0.5 truncate">{member.email}</p>
-                          </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleEditMember(member)}
-                              className="p-1.5 rounded-md text-amber-400 hover:bg-amber-500/10 transition-colors"
-                              title="Edit Member"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleRemoveMember(member.id)}
-                              className="p-1.5 rounded-md text-red-400 hover:bg-red-500/10 transition-colors"
-                              title="Remove Member"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
-                  </div>
-                )}
+                </div>
               </div>
-              </GlassCard>
+            </div>
+          )}
 
-              {/* ───────────── HEAD MEMBERS ───────────── */}
-              <GlassCard className="p-6 sm:p-8 flex flex-col h-[650px] xl:h-auto">
-              <h2 className="text-lg font-semibold flex items-center gap-2 mb-1">
-                <UsersIcon className="h-5 w-5 text-cyan-400" />
-                Head Members
-              </h2>
-              <p className="text-sm text-gray-400 mb-6 font-medium">
-                Assign department-dependent lead/head positions (e.g., Technical Lead, Event Head) below.
-              </p>
+          {/* Department heads — one panel; form left 40%, table right 60% */}
+          <section className="space-y-6">
+            <div className="rounded-2xl border border-[#484847]/35 bg-[#131313] overflow-hidden">
+              <div className="px-5 sm:px-8 pt-6 sm:pt-8 pb-5 border-b border-[#484847]/25">
+                <h2 className="font-faculty text-2xl sm:text-3xl font-bold text-white" style={{ letterSpacing: "-0.02em" }}>
+                  Department heads
+                </h2>
+                <p className="text-[#adaaaa] text-sm mt-1">
+                  Leads and heads for verticals (must include “Lead” or “Head”). Add on the left; assignments appear in the table on
+                  the right.
+                </p>
+              </div>
 
-              <form onSubmit={handleAddHeadMember} className="space-y-4 mb-6">
-                <div className="relative">
-                  <div className="relative group">
-                    <UsersIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 group-focus-within:text-cyan-400 transition-colors" />
-                    <input
-                      type="text"
-                      placeholder='Select or type position (must include "Lead" or "Head")'
-                      value={headPositionQuery}
-                      onFocus={() => setShowHeadPositionDropdown(true)}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setHeadPositionQuery(value);
-                        setHeadPosition(value);
-                        setShowHeadPositionDropdown(true);
-                      }}
-                      className="w-full pl-10 pr-10 py-3 rounded-xl bg-[#252536] border border-white/[0.08] text-white placeholder-gray-500 text-sm focus:border-cyan-500/60 focus:ring-2 focus:ring-cyan-500/20 outline-none transition-all duration-200"
-                    />
-                    <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
-                  </div>
-                  {showHeadPositionDropdown && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowHeadPositionDropdown(false)} />
-                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-white/[0.12] bg-[#1f1f31] shadow-2xl overflow-hidden">
-                        <div className="max-h-48 overflow-y-auto custom-scrollbar py-1">
-                          {filteredHeadPositions.map((position) => (
-                            <button
-                              key={position}
-                              type="button"
-                              onClick={() => {
-                                setHeadPosition(position);
-                                setHeadPositionQuery(position);
-                                setShowHeadPositionDropdown(false);
-                              }}
-                              className="w-full text-left px-3.5 py-2 text-sm text-gray-200 hover:bg-white/[0.06] transition-colors"
-                            >
-                              {position}
-                            </button>
-                          ))}
-                          {headPositionQuery.trim() &&
-                            !availableHeadPositionOptions.some(
-                              (p) => p.toLowerCase() === headPositionQuery.trim().toLowerCase()
-                            ) && (
+              <div className="flex flex-col lg:flex-row lg:items-stretch">
+                <div
+                  id="head-assign-form"
+                  className="w-full lg:w-[40%] shrink-0 p-5 sm:p-8 lg:border-r border-[#484847]/25 bg-[#1a1919]/50"
+                >
+                  <h3 className="font-faculty font-bold text-lg mb-1 flex items-center gap-2 text-white">
+                    <MIcon name="groups" className="text-[#cb7bff]" />
+                    {editingHeadMemberId ? "Update department head" : "Add department head"}
+                  </h3>
+                  <p className="text-xs text-[#adaaaa] mb-4">Position must include “Lead” or “Head”.</p>
+                  <form onSubmit={handleAddHeadMember} className="grid grid-cols-1 gap-4">
+                    <div className="relative">
+                      <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Position</label>
+                      <input
+                        className={`mt-1 ${fieldClass(false)}`}
+                        value={headPositionQuery}
+                        onFocus={() => setShowHeadPositionDropdown(true)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setHeadPositionQuery(v);
+                          setHeadPosition(v);
+                          setShowHeadPositionDropdown(true);
+                        }}
+                        placeholder='e.g. "Technical Lead"'
+                      />
+                      {showHeadPositionDropdown && (
+                        <>
+                          <div className="fixed inset-0 z-20" onClick={() => setShowHeadPositionDropdown(false)} />
+                          <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto rounded-xl border border-[#484847]/40 bg-[#131313] shadow-xl custom-scrollbar">
+                            {filteredHeadPositions.map((position) => (
                               <button
+                                key={position}
                                 type="button"
+                                className="w-full text-left px-4 py-2.5 text-sm hover:bg-[#201f1f] text-white"
                                 onClick={() => {
-                                  const custom = headPositionQuery.trim();
-                                  setHeadPosition(custom);
-                                  setHeadPositionQuery(custom);
+                                  setHeadPosition(position);
+                                  setHeadPositionQuery(position);
                                   setShowHeadPositionDropdown(false);
                                 }}
-                                className="w-full text-left px-3.5 py-2 text-sm text-cyan-300 hover:bg-cyan-500/10 transition-colors border-t border-white/[0.08]"
                               >
-                                Add custom: "{headPositionQuery.trim()}"
+                                {position}
                               </button>
-                            )}
-                          {!filteredHeadPositions.length && !headPositionQuery.trim() && (
-                            <div className="px-3.5 py-2 text-xs text-gray-500">No positions available</div>
-                          )}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <InputField
-                  icon={Mail}
-                  type="email"
-                  placeholder="Member Email ID"
-                  value={headEmail}
-                  onChange={(e) => setHeadEmail(e.target.value)}
-                />
-
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-medium text-sm hover:bg-cyan-500/20 hover:border-cyan-500/50 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  {editingHeadMemberId ? "Update Member" : "Add Member"}
-                </button>
-
-                {editingHeadMemberId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingHeadMemberId(null);
-                      setHeadPosition("");
-                      setHeadPositionQuery("");
-                      setHeadEmail("");
-                    }}
-                    className="w-full text-xs text-gray-400 hover:text-white transition-colors mt-1"
-                  >
-                    Cancel Editing
-                  </button>
-                )}
-              </form>
-
-              <div className="flex-1 flex flex-col min-h-0 bg-[#252536]/50 rounded-xl border border-white/[0.05] p-2">
-                <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-white/[0.05] mb-2 flex justify-between">
-                  <span>Assigned ({headMembers.length})</span>
-                </div>
-
-                {headMembers.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-                    <UsersIcon className="h-10 w-10 text-gray-600 mb-3" />
-                    <p className="text-gray-400 font-medium text-sm">
-                      {headLoading ? "Loading members..." : "No members added yet"}
-                    </p>
-                    <p className="text-gray-500 text-xs mt-1 max-w-[240px]">
-                      Add department leads/heads here (e.g., Technical Lead).
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                    <AnimatePresence>
-                      {headMembers.map((member) => (
-                        <motion.div
-                          key={member.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95, height: 0, margin: 0 }}
-                          className="flex items-center justify-between p-3 rounded-lg bg-white/[0.03] border border-white/[0.04] hover:border-white/[0.1] transition-colors group"
+                            ))}
+                            {headPositionQuery.trim() &&
+                              !availableHeadPositionOptions.some((p) => p.toLowerCase() === headPositionQuery.trim().toLowerCase()) && (
+                                <button
+                                  type="button"
+                                  className="w-full text-left px-4 py-2.5 text-sm border-t border-[#484847]/30 text-[#cb7bff] hover:bg-[#201f1f]"
+                                  onClick={() => {
+                                    const c = headPositionQuery.trim();
+                                    setHeadPosition(c);
+                                    setHeadPositionQuery(c);
+                                    setShowHeadPositionDropdown(false);
+                                  }}
+                                >
+                                  Use &quot;{headPositionQuery.trim()}&quot;
+                                </button>
+                              )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-[#adaaaa] uppercase tracking-wider">Email</label>
+                      <input
+                        type="email"
+                        className={`mt-1 ${fieldClass(false)}`}
+                        value={headEmail}
+                        onChange={(e) => setHeadEmail(e.target.value)}
+                        placeholder="lead@college.edu"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        type="submit"
+                        className="flex-1 min-w-[140px] py-3 rounded-xl bg-[#cb7bff] text-[#360055] font-bold text-sm hover:brightness-110 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <MIcon name="save" />
+                        {editingHeadMemberId ? "Update" : "Save"}
+                      </button>
+                      {editingHeadMemberId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingHeadMemberId(null);
+                            setHeadPosition("");
+                            setHeadPositionQuery("");
+                            setHeadEmail("");
+                          }}
+                          className="px-6 py-3 rounded-xl border border-[#484847] text-sm font-bold hover:bg-[#2c2c2c] transition-colors"
                         >
-                          <div className="min-w-0 pr-3">
-                            <p className="text-sm font-medium text-white truncate">{member.position}</p>
-                            <p className="text-xs text-gray-400 mt-0.5 truncate">{member.email}</p>
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                </div>
+
+                <div className="w-full lg:w-[60%] min-w-0 p-5 sm:p-8 flex flex-col">
+                  <div className="flex-1 rounded-xl border border-[#484847]/15 bg-[#131313] min-h-[12rem] overflow-x-auto">
+                    <div className="grid grid-cols-12 gap-4 px-4 sm:px-6 py-4 bg-[#262626]/20 border-b border-[#484847]/15 min-w-[520px]">
+                      <div className="col-span-5 text-xs font-bold uppercase tracking-widest text-[#767575]">Role</div>
+                      <div className="col-span-4 text-xs font-bold uppercase tracking-widest text-[#767575]">Assigned email</div>
+                      <div className="col-span-3 text-right text-xs font-bold uppercase tracking-widest text-[#767575]">Actions</div>
+                    </div>
+                    {headLoading ? (
+                      <div className="px-6 py-12 text-center text-[#adaaaa] text-sm">Loading…</div>
+                    ) : headMembers.length === 0 ? (
+                      <div className="px-6 py-12 text-center text-[#767575] text-sm">
+                        No department heads yet. Add a role using the form on the left.
+                      </div>
+                    ) : (
+                      headMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          className="grid grid-cols-12 gap-4 px-4 sm:px-6 py-5 items-center border-b border-[#484847]/10 last:border-0 hover:bg-[#2c2c2c]/30 transition-colors min-w-[520px]"
+                        >
+                          <div className="col-span-12 sm:col-span-5 flex items-center gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-[#0f6df3]/10 flex items-center justify-center shrink-0">
+                              <MIcon name={headRowIcon(member.position)} className="text-[#5a90ff] text-2xl" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-white">{member.position}</p>
+                              <p className="text-xs text-[#adaaaa]">Department lead</p>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="col-span-12 sm:col-span-4 flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-full bg-[#262626] border border-[#484847]/40 flex items-center justify-center text-xs font-bold text-[#89acff] shrink-0">
+                              {(member.email || "?")[0].toUpperCase()}
+                            </div>
+                            <span className="text-sm font-medium truncate">{member.email || "—"}</span>
+                          </div>
+                          <div className="col-span-12 sm:col-span-3 flex justify-end gap-2 shrink-0">
                             <button
+                              type="button"
                               onClick={() => handleEditHeadMember(member)}
-                              className="p-1.5 rounded-md text-amber-400 hover:bg-amber-500/10 transition-colors"
-                              title="Edit Member"
+                              className="px-4 py-1.5 text-xs font-bold text-[#89acff] hover:bg-[#89acff]/10 rounded-lg transition-colors"
                             >
-                              <Pencil className="h-3.5 w-3.5" />
+                              Edit
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleRemoveHeadMember(member.id)}
-                              className="p-1.5 rounded-md text-red-400 hover:bg-red-500/10 transition-colors"
-                              title="Remove Member"
+                              className="p-2 text-[#ff6e84] hover:bg-[#a70138]/10 rounded-lg transition-colors"
+                              title="Remove"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <MIcon name="delete" />
                             </button>
                           </div>
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
+                        </div>
+                      ))
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-              </GlassCard>
             </div>
-          </div>
-        </motion.div>
-      </main>
+          </section>
+        </div>
+
+        {/* FAB */}
+        <div className="fixed bottom-6 right-4 md:right-10 z-40 flex justify-end pointer-events-none max-w-[calc(100vw-2rem)]">
+          <button
+            type="button"
+            onClick={handleFabClick}
+            disabled={isSavingDetails}
+            className="pointer-events-auto group relative flex items-center gap-3 bg-white text-black px-6 sm:px-8 py-3.5 rounded-full font-bold shadow-2xl hover:bg-[#739eff] hover:text-[#002966] transition-all duration-300 active:scale-95 disabled:opacity-60 border border-white/20"
+          >
+            <MIcon name={isEditingDetails ? "rocket_launch" : "edit_calendar"} className="text-xl" />
+            <span className="relative z-10 text-sm sm:text-base">
+              {isEditingDetails ? (isSavingDetails ? "Saving…" : "Save configuration") : "Edit configuration"}
+            </span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -8,6 +8,8 @@ export default {
   theme: {
   	extend: {
   		fontFamily: {
+  			faculty: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+  			manrope: ['Manrope', 'system-ui', 'sans-serif'],
   			montserrat: [
   				'Montserrat',
   				'sans-serif'
